@@ -1,0 +1,13 @@
+<script>
+  window.__SUPERCARTD_CONFIG__ = {{ shop.metafields.supercartd.config | json }};
+</script>
+{{ 'supercartd.css' | asset_url | stylesheet_tag }}
+<script src="{{ 'supercartd.js' | asset_url }}" defer></script>
+
+{% schema %}
+{
+  "name": "SuperCartD Cart Drawer",
+  "target": "body",
+  "settings": []
+}
+{% endschema %}

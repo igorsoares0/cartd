@@ -1,0 +1,21 @@
+query Input {
+  cart {
+    lines {
+      id
+      quantity
+      cost {
+        subtotalAmount {
+          amount
+        }
+      }
+    }
+    deliveryGroups {
+      id
+    }
+  }
+  discount {
+    metafield(namespace: "supercartd", key: "rules") {
+      value
+    }
+  }
+}
