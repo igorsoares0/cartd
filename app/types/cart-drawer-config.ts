@@ -29,13 +29,16 @@ export type CartDrawerConfigJSON = {
 
 export type Reward = {
   id: string;
-  type: "free_shipping";
+  type: "free_shipping" | "percentage_discount";
   enabled: boolean;
 
   condition: {
     type: "price" | "quantity";
     value: number;
   };
+
+  /** Only used when type === "percentage_discount" */
+  discountValue?: number;
 
   design: {
     textBefore: string;
@@ -54,6 +57,9 @@ export type Upsell = {
 
   title: string;
   buttonText: string;
+
+  /** Hide this upsell if any of these product IDs are in the cart */
+  excludeIfProductIds: string[];
 
   design: {
     textColor: string;
@@ -113,8 +119,14 @@ export function createDefaultConfig(): CartDrawerConfigJSON {
 }
 
 export function extractRulesFromConfig(config: CartDrawerConfigJSON) {
-  const freeShippingReward = config.body.rewards.find(
-    (r) => r.type === "free_shipping" && r.enabled,
+  const enabledRewards = config.body.rewards.filter((r) => r.enabled);
+
+  const freeShippingReward = enabledRewards.find(
+    (r) => r.type === "free_shipping",
+  );
+
+  const percentageReward = enabledRewards.find(
+    (r) => r.type === "percentage_discount",
   );
 
   return {
@@ -124,6 +136,17 @@ export function extractRulesFromConfig(config: CartDrawerConfigJSON) {
           condition: freeShippingReward.condition,
         }
       : { enabled: false, condition: { type: "price" as const, value: 0 } },
+    percentage_discount: percentageReward
+      ? {
+          enabled: true,
+          condition: percentageReward.condition,
+          discountValue: percentageReward.discountValue ?? 10,
+        }
+      : {
+          enabled: false,
+          condition: { type: "price" as const, value: 0 },
+          discountValue: 0,
+        },
     upsells: config.body.upsells
       .filter((u) => u.enabled && u.offer.type !== "none")
       .map((u) => ({

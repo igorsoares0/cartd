@@ -1,62 +1,76 @@
 (function () {
   "use strict";
 
-  const config = window.__SUPERCARTD_CONFIG__;
+  var config = window.__SUPERCARTD_CONFIG__;
   if (!config) return;
 
-  let cart = null;
-  let isOpen = false;
-  let isLoading = false;
+  var cart = null;
+  var isOpen = false;
+  var isLoading = false;
+
+  // --- ANALYTICS ---
+  function trackEvent(event, metadata) {
+    try {
+      var body = { event: event };
+      if (metadata) body.metadata = metadata;
+      navigator.sendBeacon(
+        "/apps/supercartd/events",
+        new Blob([JSON.stringify(body)], { type: "application/json" })
+      );
+    } catch (e) {
+      // Silent fail — never block UX for analytics
+    }
+  }
 
   // --- DOM CREATION ---
   function createDrawer() {
-    const overlay = document.createElement("div");
+    var overlay = document.createElement("div");
     overlay.id = "supercartd-overlay";
 
-    const drawer = document.createElement("div");
+    var drawer = document.createElement("div");
     drawer.id = "supercartd-drawer";
 
-    drawer.innerHTML = `
-      <div class="scd-header">
-        <span class="scd-header-title"></span>
-        <button class="scd-close" aria-label="Close cart">&times;</button>
-      </div>
-      <div class="scd-announcement" style="display:none;"></div>
-      <div class="scd-rewards"></div>
-      <div class="scd-items"></div>
-      <div class="scd-upsells"></div>
-      <div class="scd-footer">
-        <div class="scd-subtotal">
-          <span>Subtotal</span>
-          <span class="scd-subtotal-value"></span>
-        </div>
-        <a class="scd-checkout-btn" href="/checkout"></a>
-        <div class="scd-trust-badges" style="display:none;">
-          🔒 Secure Checkout · 💳 All major cards accepted
-        </div>
-      </div>
-      <div class="scd-loading" style="display:none;">
-        <div class="scd-spinner"></div>
-      </div>
-    `;
+    drawer.innerHTML =
+      '<div class="scd-header">' +
+        '<span class="scd-header-title"></span>' +
+        '<button class="scd-close" aria-label="Close cart">&times;</button>' +
+      '</div>' +
+      '<div class="scd-announcement" style="display:none;"></div>' +
+      '<div class="scd-rewards"></div>' +
+      '<div class="scd-items"></div>' +
+      '<div class="scd-upsells"></div>' +
+      '<div class="scd-footer">' +
+        '<div class="scd-subtotal">' +
+          '<span>Subtotal</span>' +
+          '<span class="scd-subtotal-value"></span>' +
+        '</div>' +
+        '<a class="scd-checkout-btn" href="/checkout"></a>' +
+        '<div class="scd-trust-badges" style="display:none;">' +
+          '🔒 Secure Checkout · 💳 All major cards accepted' +
+        '</div>' +
+      '</div>' +
+      '<div class="scd-loading" style="display:none;">' +
+        '<div class="scd-spinner"></div>' +
+      '</div>';
 
     overlay.appendChild(drawer);
     document.body.appendChild(overlay);
 
     applyConfig();
     bindEvents(overlay);
+    bindTouchGestures(drawer, overlay);
   }
 
   function applyConfig() {
-    const h = config.header;
-    const headerEl = qs(".scd-header");
+    var h = config.header;
+    var headerEl = qs(".scd-header");
     headerEl.style.backgroundColor = h.backgroundColor;
     headerEl.style.color = h.textColor;
     qs(".scd-header-title").textContent = h.title;
     qs(".scd-header-title").style.fontSize = h.fontSize + "px";
 
-    const ann = config.body.announcementBar;
-    const annEl = qs(".scd-announcement");
+    var ann = config.body.announcementBar;
+    var annEl = qs(".scd-announcement");
     if (ann.enabled && ann.text) {
       annEl.style.display = "";
       annEl.style.backgroundColor = ann.backgroundColor;
@@ -64,8 +78,8 @@
       annEl.textContent = ann.text;
     }
 
-    const footer = config.footer;
-    const btnEl = qs(".scd-checkout-btn");
+    var footer = config.footer;
+    var btnEl = qs(".scd-checkout-btn");
     btnEl.textContent = footer.checkoutButtonText;
     btnEl.style.backgroundColor = footer.checkoutButtonColor;
     btnEl.style.color = footer.checkoutButtonTextColor;
@@ -75,9 +89,44 @@
     }
   }
 
+  // --- TOUCH GESTURES ---
+  function bindTouchGestures(drawer, overlay) {
+    var startX = 0;
+    var currentX = 0;
+    var isDragging = false;
+
+    drawer.addEventListener("touchstart", function (e) {
+      var touch = e.touches[0];
+      startX = touch.clientX;
+      currentX = startX;
+      isDragging = true;
+      drawer.style.transition = "none";
+    }, { passive: true });
+
+    drawer.addEventListener("touchmove", function (e) {
+      if (!isDragging) return;
+      currentX = e.touches[0].clientX;
+      var diff = currentX - startX;
+      if (diff > 0) {
+        drawer.style.transform = "translateX(" + diff + "px)";
+      }
+    }, { passive: true });
+
+    drawer.addEventListener("touchend", function () {
+      if (!isDragging) return;
+      isDragging = false;
+      drawer.style.transition = "";
+      var diff = currentX - startX;
+      if (diff > 80) {
+        closeDrawer();
+      } else {
+        drawer.style.transform = "";
+      }
+    }, { passive: true });
+  }
+
   // --- EVENTS ---
   function bindEvents(overlay) {
-    // Close handlers
     qs(".scd-close").addEventListener("click", closeDrawer);
     overlay.addEventListener("click", function (e) {
       if (e.target === overlay) closeDrawer();
@@ -88,26 +137,39 @@
 
     // Intercept add-to-cart forms
     document.addEventListener("submit", function (e) {
-      const form = e.target.closest('form[action*="/cart/add"]');
+      var form = e.target.closest('form[action*="/cart/add"]');
       if (!form) return;
 
       e.preventDefault();
-      const formData = new FormData(form);
+      var formData = new FormData(form);
       addToCart(formDataToObj(formData));
     });
 
-    // Intercept AJAX add-to-cart buttons (common patterns)
+    // Intercept AJAX add-to-cart buttons
     document.addEventListener("click", function (e) {
-      const btn = e.target.closest("[data-supercartd-add]");
+      var btn = e.target.closest("[data-supercartd-add]");
       if (!btn) return;
 
       e.preventDefault();
-      const variantId = btn.dataset.variantId;
-      const qty = parseInt(btn.dataset.quantity || "1", 10);
+      var variantId = btn.dataset.variantId;
+      var qty = parseInt(btn.dataset.quantity || "1", 10);
       if (variantId) {
         addToCart({ id: variantId, quantity: qty });
       }
     });
+
+    // Track checkout clicks
+    var checkoutBtn = qs(".scd-checkout-btn");
+    if (checkoutBtn) {
+      checkoutBtn.addEventListener("click", function () {
+        if (cart) {
+          trackEvent("checkout_click", {
+            cartTotal: (cart.total_price / 100).toFixed(2),
+            itemCount: cart.item_count,
+          });
+        }
+      });
+    }
   }
 
   // --- CART API ---
@@ -174,7 +236,7 @@
   }
 
   function renderRewards() {
-    const container = qs(".scd-rewards");
+    var container = qs(".scd-rewards");
     container.innerHTML = "";
 
     var rewards = config.body.rewards.filter(function (r) { return r.enabled; });
@@ -193,11 +255,19 @@
           ? "$" + Math.max(target - current, 0).toFixed(2)
           : String(Math.max(target - current, 0));
 
+      var rewardLabel = "";
+      if (reward.type === "free_shipping") {
+        rewardLabel = "free shipping";
+      } else if (reward.type === "percentage_discount") {
+        rewardLabel = (reward.discountValue || 10) + "% off";
+      }
+
       var text = met
         ? reward.design.textAfter
         : reward.design.textBefore
             .replace("{{remaining}}", remaining)
-            .replace("{{target}}", String(target));
+            .replace("{{target}}", String(target))
+            .replace("{{reward}}", rewardLabel);
 
       var el = document.createElement("div");
       el.className = "scd-reward";
@@ -238,12 +308,12 @@
           '<div class="scd-item-title">' + escapeHtml(item.title) + "</div>" +
           '<div class="scd-item-price">' + formatMoney(item.final_line_price) + "</div>" +
           '<div class="scd-item-qty">' +
-            '<button class="scd-qty-btn scd-qty-minus" data-key="' + item.key + '">−</button>' +
+            '<button class="scd-qty-btn scd-qty-minus" data-key="' + item.key + '" aria-label="Decrease quantity">−</button>' +
             '<span class="scd-qty-value">' + item.quantity + "</span>" +
-            '<button class="scd-qty-btn scd-qty-plus" data-key="' + item.key + '">+</button>' +
+            '<button class="scd-qty-btn scd-qty-plus" data-key="' + item.key + '" aria-label="Increase quantity">+</button>' +
           "</div>" +
         "</div>" +
-        '<button class="scd-item-remove" data-key="' + item.key + '" aria-label="Remove">&times;</button>';
+        '<button class="scd-item-remove" data-key="' + item.key + '" aria-label="Remove item">&times;</button>';
 
       container.appendChild(el);
     });
@@ -279,14 +349,29 @@
     var upsells = config.body.upsells.filter(function (u) { return u.enabled; });
     if (upsells.length === 0) return;
 
-    // Filter out products already in cart
+    // Filter out products already in cart (basic exclusion)
     var cartProductIds = cart.items.map(function (i) { return String(i.product_id); });
     var cartVariantIds = cart.items.map(function (i) { return String(i.variant_id); });
 
     var available = upsells.filter(function (u) {
       var pid = u.productId.replace("gid://shopify/Product/", "");
       var vid = u.variantId.replace("gid://shopify/ProductVariant/", "");
-      return cartProductIds.indexOf(pid) === -1 && cartVariantIds.indexOf(vid) === -1;
+
+      // Don't show if own product is in cart
+      if (cartProductIds.indexOf(pid) !== -1 || cartVariantIds.indexOf(vid) !== -1) {
+        return false;
+      }
+
+      // Mutual exclusion: don't show if any excluded product is in cart
+      var excludeIds = u.excludeIfProductIds || [];
+      for (var i = 0; i < excludeIds.length; i++) {
+        var exId = excludeIds[i].replace("gid://shopify/Product/", "");
+        if (cartProductIds.indexOf(exId) !== -1) {
+          return false;
+        }
+      }
+
+      return true;
     });
 
     if (available.length === 0) return;
@@ -315,7 +400,19 @@
           escapeHtml(upsell.buttonText) +
         "</button>";
 
+      // Track upsell impression click area
+      card.addEventListener("click", function (e) {
+        if (!e.target.closest(".scd-upsell-btn")) {
+          trackEvent("upsell_click", { productId: upsell.productId });
+        }
+      });
+
       card.querySelector(".scd-upsell-btn").addEventListener("click", function () {
+        trackEvent("upsell_add", {
+          productId: upsell.productId,
+          variantId: upsell.variantId,
+          value: upsell.offer.type !== "none" ? upsell.offer.value : 0,
+        });
         var vid = upsell.variantId.replace("gid://shopify/ProductVariant/", "");
         addToCart({ id: parseInt(vid, 10), quantity: 1 });
       });
@@ -335,6 +432,7 @@
       overlay.classList.add("scd-open");
       isOpen = true;
       document.body.style.overflow = "hidden";
+      trackEvent("drawer_open");
     }
   }
 
@@ -344,6 +442,9 @@
       overlay.classList.remove("scd-open");
       isOpen = false;
       document.body.style.overflow = "";
+      // Reset any swipe transform
+      var drawer = document.getElementById("supercartd-drawer");
+      if (drawer) drawer.style.transform = "";
     }
   }
 

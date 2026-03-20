@@ -214,7 +214,7 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
       };
 
     case "ADD_REWARD": {
-      if (state.config.body.rewards.length >= 3) return state;
+      if (state.config.body.rewards.length >= 5) return state;
       const newReward: Reward = {
         id: generateId(),
         type: "free_shipping",
@@ -280,7 +280,7 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
     }
 
     case "ADD_UPSELL": {
-      if (state.config.body.upsells.length >= 3) return state;
+      if (state.config.body.upsells.length >= 5) return state;
       const newUpsell: Upsell = {
         id: generateId(),
         enabled: true,
@@ -288,6 +288,7 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
         variantId: "",
         title: "You might also like",
         buttonText: "Add",
+        excludeIfProductIds: [],
         design: {
           textColor: "#333333",
           buttonColor: "#000000",
@@ -514,7 +515,12 @@ function RewardsSection({
           >
             <s-stack direction="block" gap="base">
               <s-stack direction="inline" gap="base" align-items="center">
-                <s-heading>Reward {idx + 1} — Free Shipping</s-heading>
+                <s-heading>
+                  Reward {idx + 1} —{" "}
+                  {reward.type === "free_shipping"
+                    ? "Free Shipping"
+                    : `${reward.discountValue ?? 10}% Off`}
+                </s-heading>
                 <s-button
                   variant="tertiary"
                   tone="critical"
@@ -525,6 +531,44 @@ function RewardsSection({
                   Remove
                 </s-button>
               </s-stack>
+
+              <s-select
+                label="Reward Type"
+                name={`reward-${reward.id}-type`}
+                value={reward.type}
+                onInput={(e: Event) =>
+                  dispatch({
+                    type: "UPDATE_REWARD",
+                    id: reward.id,
+                    path: "type",
+                    value: (e.target as HTMLSelectElement).value,
+                  })
+                }
+              >
+                <s-option value="free_shipping">Free Shipping</s-option>
+                <s-option value="percentage_discount">
+                  Percentage Discount
+                </s-option>
+              </s-select>
+
+              {reward.type === "percentage_discount" && (
+                <s-number-field
+                  label="Discount (%)"
+                  name={`reward-${reward.id}-discountValue`}
+                  value={String(reward.discountValue ?? 10)}
+                  min={1}
+                  max={100}
+                  step={1}
+                  onInput={(e: Event) =>
+                    dispatch({
+                      type: "UPDATE_REWARD",
+                      id: reward.id,
+                      path: "discountValue",
+                      value: Number((e.target as HTMLInputElement).value),
+                    })
+                  }
+                />
+              )}
 
               <s-switch
                 label="Enabled"
@@ -650,7 +694,7 @@ function RewardsSection({
           </s-box>
         ))}
 
-        {rewards.length < 3 && (
+        {rewards.length < 5 && (
           <s-button
             variant="secondary"
             onClick={() => dispatch({ type: "ADD_REWARD" })}
@@ -703,6 +747,31 @@ function UpsellsSection({
               value: product.variants[0].id,
             });
           }
+        }
+      } catch {
+        // User cancelled picker
+      }
+    },
+    [shopify, dispatch],
+  );
+
+  const handlePickExclusions = useCallback(
+    async (upsellId: string, currentExclusions: string[]) => {
+      try {
+        const selected = await shopify.resourcePicker({
+          type: "product",
+          multiple: true,
+          action: "select",
+        });
+        if (selected && selected.length > 0) {
+          const newIds = selected.map((p: { id: string }) => p.id);
+          const merged = [...new Set([...currentExclusions, ...newIds])];
+          dispatch({
+            type: "UPDATE_UPSELL",
+            id: upsellId,
+            path: "excludeIfProductIds",
+            value: merged,
+          });
         }
       } catch {
         // User cancelled picker
@@ -764,9 +833,45 @@ function UpsellsSection({
                 </s-button>
               </s-stack>
 
+              {/* Product exclusion */}
+              <s-stack direction="block" gap="base">
+                <s-stack direction="inline" gap="base" align-items="center">
+                  <s-text>
+                    Exclusions: {(upsell.excludeIfProductIds ?? []).length === 0
+                      ? "None"
+                      : `${(upsell.excludeIfProductIds ?? []).length} product(s)`}
+                  </s-text>
+                  <s-button
+                    variant="tertiary"
+                    onClick={() =>
+                      handlePickExclusions(
+                        upsell.id,
+                        upsell.excludeIfProductIds ?? [],
+                      )
+                    }
+                  >
+                    Add Exclusion
+                  </s-button>
+                  {(upsell.excludeIfProductIds ?? []).length > 0 && (
+                    <s-button
+                      variant="tertiary"
+                      tone="critical"
+                      onClick={() =>
+                        dispatch({
+                          type: "UPDATE_UPSELL",
+                          id: upsell.id,
+                          path: "excludeIfProductIds",
+                          value: [],
+                        })
+                      }
+                    >
+                      Clear
+                    </s-button>
+                  )}
+                </s-stack>
+              </s-stack>
+
               <s-text-field
-                label="Button Text"
-                name={`upsell-${upsell.id}-btnText`}
                 value={upsell.buttonText}
                 onInput={(e: Event) =>
                   dispatch({
@@ -914,7 +1019,7 @@ function UpsellsSection({
           </s-box>
         ))}
 
-        {upsells.length < 3 && (
+        {upsells.length < 5 && (
           <s-button
             variant="secondary"
             onClick={() => dispatch({ type: "ADD_UPSELL" })}

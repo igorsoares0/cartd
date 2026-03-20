@@ -340,4 +340,104 @@
   #supercartd-drawer {
     width: 100vw;
   }
+
+  .scd-header {
+    padding: 14px 16px;
+  }
+
+  .scd-close {
+    font-size: 24px;
+    padding: 8px 12px;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .scd-items {
+    padding: 12px 16px;
+  }
+
+  .scd-item-image {
+    width: 56px;
+    height: 56px;
+  }
+
+  .scd-qty-btn {
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .scd-qty-value {
+    font-size: 15px;
+    min-width: 24px;
+  }
+
+  .scd-item-remove {
+    font-size: 20px;
+    padding: 8px;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .scd-upsells {
+    padding: 0 16px 12px;
+  }
+
+  .scd-upsell-card {
+    padding: 14px;
+  }
+
+  .scd-upsell-btn {
+    padding: 10px 18px;
+    font-size: 14px;
+    min-height: 44px;
+  }
+
+  .scd-footer {
+    padding: 14px 16px;
+  }
+
+  .scd-checkout-btn {
+    padding: 16px;
+    font-size: 17px;
+    min-height: 48px;
+  }
+}
+
+/* Tablet */
+@media (min-width: 481px) and (max-width: 768px) {
+  #supercartd-drawer {
+    width: 380px;
+  }
+}
+
+/* Touch feedback */
+@media (hover: none) {
+  .scd-qty-btn:active {
+    background: #e8e8e8;
+  }
+
+  .scd-upsell-btn:active {
+    opacity: 0.7;
+  }
+
+  .scd-checkout-btn:active {
+    opacity: 0.8;
+  }
+
+  .scd-close:active {
+    opacity: 0.5;
+  }
+
+  .scd-item-remove:active {
+    color: #c00;
+  }
 }
