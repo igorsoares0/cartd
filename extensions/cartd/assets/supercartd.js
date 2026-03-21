@@ -378,8 +378,8 @@
 
     rewards.forEach(function (reward) {
       var current = reward.condition.type === "price" ? totalPrice : totalQty;
-      var target = reward.condition.value;
-      var progress = Math.min((current / target) * 100, 100);
+      var target = reward.condition.value || 1;
+      var pct = Math.min(Math.max((current / target) * 100, 0), 100);
       var met = current >= target;
       var remaining =
         reward.condition.type === "price"
@@ -404,12 +404,26 @@
       el.className = "scd-reward";
       el.style.backgroundColor = reward.design.backgroundColor;
       el.style.color = reward.design.textColor;
-      el.innerHTML =
-        '<div class="scd-reward-text">' + escapeHtml(text) + "</div>" +
-        '<div class="scd-progress-track">' +
-          '<div class="scd-progress-fill" style="width:' + progress + "%;background:" + reward.design.progressColor + '"></div>' +
-        "</div>";
 
+      var textDiv = document.createElement("div");
+      textDiv.className = "scd-reward-text";
+      textDiv.textContent = text;
+
+      var track = document.createElement("div");
+      track.className = "scd-progress-track";
+
+      var fill = document.createElement("div");
+      fill.className = "scd-progress-fill";
+      var fillColor = reward.design.progressColor || "#4CAF50";
+      fill.style.width = pct + "%";
+      fill.style.height = "8px";
+      fill.style.backgroundColor = fillColor;
+      fill.style.borderRadius = "4px";
+      fill.style.display = "block";
+      track.appendChild(fill);
+
+      el.appendChild(textDiv);
+      el.appendChild(track);
       container.appendChild(el);
     });
   }
