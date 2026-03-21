@@ -165,7 +165,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
     }
 
-    // Write metafields atomically
+    const rulesJson = JSON.stringify(rules);
+
+    // Write shop metafields (for storefront JS)
     await admin.graphql(
       `#graphql
       mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
@@ -189,12 +191,125 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               namespace: "supercartd",
               key: "rules",
               type: "json",
-              value: JSON.stringify(rules),
+              value: rulesJson,
             },
           ],
         },
       },
     );
+
+    // --- Create/Update Automatic Discounts for Shopify Functions ---
+    const configRecord = await prisma.cartDrawerConfig.findUnique({
+      where: { shop },
+    });
+
+    // Get function IDs from deployed extensions
+    const functionsRes = await admin.graphql(`
+      query { shopifyFunctions(first: 25) { nodes { id title apiType } } }
+    `);
+    const functionsData = await functionsRes.json();
+    const funcs = functionsData.data?.shopifyFunctions?.nodes || [];
+    console.log(
+      "Shopify Functions found:",
+      JSON.stringify(funcs.map((f: any) => ({ id: f.id, title: f.title, apiType: f.apiType }))),
+    );
+
+    // Our multi-target function has apiType "discount"
+    const discountFunc = funcs.find((f: any) => f.apiType === "discount");
+
+    let productDiscountGid = configRecord?.productDiscountGid || null;
+
+    if (discountFunc) {
+      if (productDiscountGid) {
+        // Update existing discount's rules metafield
+        const res = await admin.graphql(
+          `#graphql
+          mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
+            metafieldsSet(metafields: $metafields) {
+              metafields { id }
+              userErrors { field message }
+            }
+          }`,
+          {
+            variables: {
+              metafields: [
+                {
+                  ownerId: productDiscountGid,
+                  namespace: "supercartd",
+                  key: "rules",
+                  type: "json",
+                  value: rulesJson,
+                },
+              ],
+            },
+          },
+        );
+        const data = await res.json();
+        const errors = data.data?.metafieldsSet?.userErrors || [];
+        if (errors.length > 0) {
+          console.warn("Discount metafield update errors:", JSON.stringify(errors));
+          // Discount may have been deleted — recreate it
+          productDiscountGid = null;
+        } else {
+          console.log("Discount: updated rules metafield on", productDiscountGid);
+        }
+      }
+
+      if (!productDiscountGid) {
+        // Create new automatic discount
+        const res = await admin.graphql(
+          `#graphql
+          mutation CreateAutoDiscount($discount: DiscountAutomaticAppInput!) {
+            discountAutomaticAppCreate(automaticAppDiscount: $discount) {
+              automaticAppDiscount { discountId }
+              userErrors { field message code }
+            }
+          }`,
+          {
+            variables: {
+              discount: {
+                title: "SuperCartD Discounts",
+                functionId: discountFunc.id,
+                startsAt: new Date().toISOString(),
+                discountClasses: ["PRODUCT", "SHIPPING"],
+                combinesWith: {
+                  orderDiscounts: true,
+                  productDiscounts: true,
+                  shippingDiscounts: true,
+                },
+                metafields: [
+                  {
+                    namespace: "supercartd",
+                    key: "rules",
+                    type: "json",
+                    value: rulesJson,
+                  },
+                ],
+              },
+            },
+          },
+        );
+        const data = await res.json();
+        const errors =
+          data.data?.discountAutomaticAppCreate?.userErrors || [];
+        if (errors.length > 0) {
+          console.error("Discount create errors:", JSON.stringify(errors));
+        } else {
+          productDiscountGid =
+            data.data?.discountAutomaticAppCreate?.automaticAppDiscount
+              ?.discountId || null;
+          console.log("Discount: created with GID", productDiscountGid);
+        }
+      }
+    } else {
+      console.warn("Discount function not found in shopifyFunctions");
+    }
+
+    // Save discount GID
+    await prisma.cartDrawerConfig.update({
+      where: { shop },
+      data: { productDiscountGid },
+    });
 
     return { success: true, intent: "publish" };
   }

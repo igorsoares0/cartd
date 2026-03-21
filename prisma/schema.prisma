@@ -34,12 +34,14 @@ model Session {
 }
 
 model CartDrawerConfig {
-  id        String   @id @default(cuid())
-  shop      String   @unique
-  config    String   // CartDrawerConfigJSON stored as JSON string
-  published Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  shop                String   @unique
+  config              String   // CartDrawerConfigJSON stored as JSON string
+  published           Boolean  @default(false)
+  productDiscountGid  String?  // GID of auto discount for product discount function
+  deliveryDiscountGid String?  // GID of auto discount for delivery discount function
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 
 model ShopUsage {
