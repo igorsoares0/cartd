@@ -93,6 +93,78 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const shopData = await shopResponse.json();
     const shopGid = shopData.data?.shop?.id;
 
+    // Ensure metafield definitions exist with storefront access (BEFORE setting values)
+    const metafieldDefs = [
+      { namespace: "supercartd", key: "config", name: "Cart Drawer Config" },
+      { namespace: "supercartd", key: "rules", name: "Cart Drawer Rules" },
+    ];
+
+    for (const def of metafieldDefs) {
+      try {
+        // Try to create the definition
+        const createRes = await admin.graphql(
+          `mutation CreateMetafieldDef($definition: MetafieldDefinitionInput!) {
+            metafieldDefinitionCreate(definition: $definition) {
+              createdDefinition { id }
+              userErrors { field message code }
+            }
+          }`,
+          {
+            variables: {
+              definition: {
+                namespace: def.namespace,
+                key: def.key,
+                name: def.name,
+                ownerType: "SHOP",
+                type: "json",
+                access: {
+                  storefront: "PUBLIC_READ",
+                },
+              },
+            },
+          },
+        );
+        const createData = await createRes.json();
+        const errors = createData.data?.metafieldDefinitionCreate?.userErrors;
+
+        if (errors && errors.length > 0) {
+          console.log(`MetafieldDef ${def.key}: create errors:`, JSON.stringify(errors));
+          // Definition likely already exists — update its access
+          const updateRes = await admin.graphql(
+            `mutation UpdateMetafieldDef($definition: MetafieldDefinitionUpdateInput!) {
+              metafieldDefinitionUpdate(definition: $definition) {
+                updatedDefinition { id }
+                userErrors { field message }
+              }
+            }`,
+            {
+              variables: {
+                definition: {
+                  namespace: def.namespace,
+                  key: def.key,
+                  ownerType: "SHOP",
+                  access: {
+                    storefront: "PUBLIC_READ",
+                  },
+                },
+              },
+            },
+          );
+          const updateData = await updateRes.json();
+          const updateErrors = updateData.data?.metafieldDefinitionUpdate?.userErrors;
+          if (updateErrors && updateErrors.length > 0) {
+            console.error(`MetafieldDef ${def.key}: update errors:`, JSON.stringify(updateErrors));
+          } else {
+            console.log(`MetafieldDef ${def.key}: updated storefront access to PUBLIC_READ`);
+          }
+        } else {
+          console.log(`MetafieldDef ${def.key}: created with storefront PUBLIC_READ`);
+        }
+      } catch (err) {
+        console.error(`MetafieldDef ${def.key}: error`, err);
+      }
+    }
+
     // Write metafields atomically
     await admin.graphql(
       `#graphql

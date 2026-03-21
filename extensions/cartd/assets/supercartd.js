@@ -1,12 +1,15 @@
 (function () {
   "use strict";
 
-  var config = window.__SUPERCARTD_CONFIG__;
-  if (!config) return;
+  // Save original fetch BEFORE any patching — used for our own cart API calls
+  var _fetch = window.fetch.bind(window);
 
+  var config = null;
   var cart = null;
   var isOpen = false;
   var isLoading = false;
+  var drawerReady = false;
+  var pendingOpen = false;
 
   // --- ANALYTICS ---
   function trackEvent(event, metadata) {
@@ -20,6 +23,63 @@
     } catch (e) {
       // Silent fail — never block UX for analytics
     }
+  }
+
+  // --- CONFIG LOADING ---
+  function parseConfig(raw) {
+    if (!raw) return null;
+    // Handle double-encoded JSON (Liquid | json on a json metafield can produce a string)
+    var obj = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (typeof obj === "string") obj = JSON.parse(obj);
+    // Validate minimal structure
+    if (!obj || !obj.header || !obj.body || !obj.footer) {
+      console.warn("SuperCartD: invalid config structure", Object.keys(obj || {}));
+      return null;
+    }
+    return obj;
+  }
+
+  function loadConfig(cb) {
+    // 1. Try embedded metafield config (zero latency)
+    if (window.__SUPERCARTD_CONFIG__) {
+      try {
+        var parsed = parseConfig(window.__SUPERCARTD_CONFIG__);
+        if (parsed) {
+          console.log("SuperCartD: config loaded from metafield");
+          cb(parsed);
+          return;
+        }
+      } catch (e) {
+        console.warn("SuperCartD: failed to parse metafield config", e);
+      }
+    }
+    console.warn("SuperCartD: metafield config unavailable, trying app proxy...");
+    // 2. Fallback: fetch from app proxy
+    _fetch("/apps/supercartd/config")
+      .then(function (r) {
+        if (!r.ok) {
+          console.warn("SuperCartD: app proxy returned", r.status);
+          return null;
+        }
+        var ct = r.headers.get("content-type") || "";
+        if (ct.indexOf("json") === -1) {
+          console.warn("SuperCartD: app proxy returned non-JSON:", ct);
+          return null;
+        }
+        return r.json();
+      })
+      .then(function (c) {
+        var parsed = parseConfig(c);
+        if (parsed) {
+          console.log("SuperCartD: config loaded from app proxy");
+          cb(parsed);
+        } else {
+          console.warn("SuperCartD: no config available (not published?)");
+        }
+      })
+      .catch(function (err) {
+        console.warn("SuperCartD: failed to load config", err);
+      });
   }
 
   // --- DOM CREATION ---
@@ -57,8 +117,8 @@
     document.body.appendChild(overlay);
 
     applyConfig();
-    bindEvents(overlay);
-    bindTouchGestures(drawer, overlay);
+    bindDrawerEvents(overlay);
+    bindTouchGestures(drawer);
   }
 
   function applyConfig() {
@@ -90,14 +150,13 @@
   }
 
   // --- TOUCH GESTURES ---
-  function bindTouchGestures(drawer, overlay) {
+  function bindTouchGestures(drawer) {
     var startX = 0;
     var currentX = 0;
     var isDragging = false;
 
     drawer.addEventListener("touchstart", function (e) {
-      var touch = e.touches[0];
-      startX = touch.clientX;
+      startX = e.touches[0].clientX;
       currentX = startX;
       isDragging = true;
       drawer.style.transition = "none";
@@ -116,8 +175,7 @@
       if (!isDragging) return;
       isDragging = false;
       drawer.style.transition = "";
-      var diff = currentX - startX;
-      if (diff > 80) {
+      if (currentX - startX > 80) {
         closeDrawer();
       } else {
         drawer.style.transform = "";
@@ -125,8 +183,8 @@
     }, { passive: true });
   }
 
-  // --- EVENTS ---
-  function bindEvents(overlay) {
+  // --- DRAWER EVENTS (close, qty, checkout) ---
+  function bindDrawerEvents(overlay) {
     qs(".scd-close").addEventListener("click", closeDrawer);
     overlay.addEventListener("click", function (e) {
       if (e.target === overlay) closeDrawer();
@@ -135,30 +193,6 @@
       if (e.key === "Escape" && isOpen) closeDrawer();
     });
 
-    // Intercept add-to-cart forms
-    document.addEventListener("submit", function (e) {
-      var form = e.target.closest('form[action*="/cart/add"]');
-      if (!form) return;
-
-      e.preventDefault();
-      var formData = new FormData(form);
-      addToCart(formDataToObj(formData));
-    });
-
-    // Intercept AJAX add-to-cart buttons
-    document.addEventListener("click", function (e) {
-      var btn = e.target.closest("[data-supercartd-add]");
-      if (!btn) return;
-
-      e.preventDefault();
-      var variantId = btn.dataset.variantId;
-      var qty = parseInt(btn.dataset.quantity || "1", 10);
-      if (variantId) {
-        addToCart({ id: variantId, quantity: qty });
-      }
-    });
-
-    // Track checkout clicks
     var checkoutBtn = qs(".scd-checkout-btn");
     if (checkoutBtn) {
       checkoutBtn.addEventListener("click", function () {
@@ -172,38 +206,130 @@
     }
   }
 
-  // --- CART API ---
+  // --- ADD-TO-CART INTERCEPTION (set up BEFORE config loads) ---
+  function setupInterception() {
+    // 1. Intercept <form action="/cart/add"> submissions
+    document.addEventListener("submit", function (e) {
+      var form = e.target;
+      if (!form || !form.action) return;
+      if (form.action.indexOf("/cart/add") === -1) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      var formData = new FormData(form);
+      formData.delete("return_to");
+      addToCartFromForm(formData);
+    }, true); // capture phase — run before theme handlers
+
+    // 2. Intercept clicks on cart links (a[href="/cart"])
+    document.addEventListener("click", function (e) {
+      // Custom trigger attribute
+      var trigger = e.target.closest("[data-supercartd-add]");
+      if (trigger) {
+        e.preventDefault();
+        var vid = trigger.dataset.variantId;
+        var qty = parseInt(trigger.dataset.quantity || "1", 10);
+        if (vid) addToCart({ id: vid, quantity: qty });
+        return;
+      }
+
+      // Cart page links → open drawer instead
+      var cartLink = e.target.closest('a[href="/cart"]');
+      if (cartLink) {
+        e.preventDefault();
+        refreshAndOpen();
+      }
+    });
+
+    // 3. Monkey-patch fetch — intercept AJAX add-to-cart (Dawn & most modern themes)
+    var origFetch = window.fetch;
+    window.fetch = function () {
+      var url = arguments[0];
+      var urlStr = typeof url === "string" ? url : (url && url.url ? url.url : "");
+
+      if (urlStr.indexOf("/cart/add") !== -1) {
+        // Let the original request through, then open our drawer
+        return origFetch.apply(this, arguments).then(function (response) {
+          // Small delay so theme can process its response first
+          setTimeout(function () { refreshAndOpen(); }, 100);
+          return response;
+        });
+      }
+
+      return origFetch.apply(this, arguments);
+    };
+
+    // 4. Monkey-patch XMLHttpRequest — older themes
+    var origXHROpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function () {
+      var url = arguments[1] || "";
+      if (typeof url === "string" && url.indexOf("/cart/add") !== -1) {
+        this._scdIntercept = true;
+      }
+      return origXHROpen.apply(this, arguments);
+    };
+
+    var origXHRSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.send = function () {
+      if (this._scdIntercept) {
+        this.addEventListener("load", function () {
+          setTimeout(function () { refreshAndOpen(); }, 100);
+        });
+      }
+      return origXHRSend.apply(this, arguments);
+    };
+  }
+
+  // --- CART API (uses _fetch to bypass our monkey-patch) ---
   function fetchCart() {
-    return fetch("/cart.js", {
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
-    }).then(function (r) { return r.json(); });
+    return _fetch("/cart.js")
+      .then(function (r) { return r.json(); });
+  }
+
+  function addToCartFromForm(formData) {
+    setLoading(true);
+    _fetch("/cart/add.js", {
+      method: "POST",
+      body: formData,
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error("Add to cart failed: " + r.status);
+        return refreshAndOpen();
+      })
+      .catch(function (err) {
+        console.error("SuperCartD:", err);
+        setLoading(false);
+      });
   }
 
   function addToCart(data) {
     setLoading(true);
-    fetch("/cart/add.js", {
+    _fetch("/cart/add.js", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     })
-      .then(function () { return refreshAndOpen(); })
+      .then(function (r) {
+        if (!r.ok) throw new Error("Add to cart failed: " + r.status);
+        return refreshAndOpen();
+      })
       .catch(function (err) {
-        console.error("SuperCartD: add to cart failed", err);
+        console.error("SuperCartD:", err);
         setLoading(false);
       });
   }
 
   function changeQuantity(lineKey, quantity) {
     setLoading(true);
-    fetch("/cart/change.js", {
+    _fetch("/cart/change.js", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: lineKey, quantity: quantity }),
     })
       .then(function () { return refreshCart(); })
       .catch(function (err) {
-        console.error("SuperCartD: change quantity failed", err);
+        console.error("SuperCartD:", err);
         setLoading(false);
       });
   }
@@ -211,7 +337,7 @@
   function refreshCart() {
     return fetchCart().then(function (c) {
       cart = c;
-      renderCart();
+      if (drawerReady) renderCart();
       setLoading(false);
     });
   }
@@ -219,15 +345,20 @@
   function refreshAndOpen() {
     return fetchCart().then(function (c) {
       cart = c;
-      renderCart();
-      openDrawer();
-      setLoading(false);
+      if (drawerReady) {
+        renderCart();
+        openDrawer();
+        setLoading(false);
+      } else {
+        // Drawer not ready yet — queue the open for when config loads
+        pendingOpen = true;
+      }
     });
   }
 
   // --- RENDER ---
   function renderCart() {
-    if (!cart) return;
+    if (!cart || !config) return;
 
     renderRewards();
     renderItems();
@@ -318,7 +449,6 @@
       container.appendChild(el);
     });
 
-    // Bind qty buttons
     container.querySelectorAll(".scd-qty-minus").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var key = btn.dataset.key;
@@ -349,7 +479,6 @@
     var upsells = config.body.upsells.filter(function (u) { return u.enabled; });
     if (upsells.length === 0) return;
 
-    // Filter out products already in cart (basic exclusion)
     var cartProductIds = cart.items.map(function (i) { return String(i.product_id); });
     var cartVariantIds = cart.items.map(function (i) { return String(i.variant_id); });
 
@@ -357,18 +486,14 @@
       var pid = u.productId.replace("gid://shopify/Product/", "");
       var vid = u.variantId.replace("gid://shopify/ProductVariant/", "");
 
-      // Don't show if own product is in cart
       if (cartProductIds.indexOf(pid) !== -1 || cartVariantIds.indexOf(vid) !== -1) {
         return false;
       }
 
-      // Mutual exclusion: don't show if any excluded product is in cart
       var excludeIds = u.excludeIfProductIds || [];
       for (var i = 0; i < excludeIds.length; i++) {
         var exId = excludeIds[i].replace("gid://shopify/Product/", "");
-        if (cartProductIds.indexOf(exId) !== -1) {
-          return false;
-        }
+        if (cartProductIds.indexOf(exId) !== -1) return false;
       }
 
       return true;
@@ -400,7 +525,6 @@
           escapeHtml(upsell.buttonText) +
         "</button>";
 
-      // Track upsell impression click area
       card.addEventListener("click", function (e) {
         if (!e.target.closest(".scd-upsell-btn")) {
           trackEvent("upsell_click", { productId: upsell.productId });
@@ -442,7 +566,6 @@
       overlay.classList.remove("scd-open");
       isOpen = false;
       document.body.style.overflow = "";
-      // Reset any swipe transform
       var drawer = document.getElementById("supercartd-drawer");
       if (drawer) drawer.style.transform = "";
     }
@@ -469,29 +592,26 @@
     return "$" + (cents / 100).toFixed(2);
   }
 
-  function formDataToObj(formData) {
-    var obj = {};
-    formData.forEach(function (value, key) {
-      obj[key] = value;
-    });
-    return obj;
-  }
-
   // --- INIT ---
   function init() {
-    createDrawer();
-    fetchCart().then(function (c) {
-      cart = c;
-      renderCart();
-    });
+    // Set up interception IMMEDIATELY — even before config loads
+    // This prevents the browser from navigating to /cart on add-to-cart
+    setupInterception();
 
-    // Also open drawer on cart icon click (common theme pattern)
-    document.addEventListener("click", function (e) {
-      var cartLink = e.target.closest('a[href="/cart"]');
-      if (cartLink && !e.defaultPrevented) {
-        e.preventDefault();
-        refreshAndOpen();
-      }
+    // Load config (metafield → app proxy fallback) then build drawer
+    loadConfig(function (c) {
+      config = c;
+      createDrawer();
+      drawerReady = true;
+
+      fetchCart().then(function (cartData) {
+        cart = cartData;
+        renderCart();
+        if (pendingOpen) {
+          openDrawer();
+          pendingOpen = false;
+        }
+      });
     });
   }
 
