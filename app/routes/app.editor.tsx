@@ -485,7 +485,9 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
         productId: "",
         variantId: "",
         title: "You might also like",
+        imageUrl: "",
         buttonText: "Add",
+        variants: [],
         excludeIfProductIds: [],
         design: {
           textColor: "#333333",
@@ -949,12 +951,34 @@ function UpsellsSection({
             path: "title",
             value: product.title,
           });
-          if (product.variants && product.variants.length > 0) {
+          // Save product image
+          const imgSrc =
+            product.images?.[0]?.originalSrc || "";
+          dispatch({
+            type: "UPDATE_UPSELL",
+            id: upsellId,
+            path: "imageUrl",
+            value: imgSrc,
+          });
+          // Save all variants
+          const variants = (product.variants || []).map(
+            (v) => ({
+              id: v.id || "",
+              title: v.title || "Default",
+            }),
+          );
+          dispatch({
+            type: "UPDATE_UPSELL",
+            id: upsellId,
+            path: "variants",
+            value: variants,
+          });
+          if (variants.length > 0) {
             dispatch({
               type: "UPDATE_UPSELL",
               id: upsellId,
               path: "variantId",
-              value: product.variants[0].id,
+              value: variants[0].id,
             });
           }
         }
@@ -1042,6 +1066,47 @@ function UpsellsSection({
                   Pick Product
                 </s-button>
               </s-stack>
+
+              {/* Product image preview */}
+              {upsell.imageUrl && (
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <img
+                    src={upsell.imageUrl}
+                    alt={upsell.title}
+                    style={{
+                      width: "48px",
+                      height: "48px",
+                      objectFit: "cover",
+                      borderRadius: "6px",
+                      border: "1px solid #ddd",
+                    }}
+                  />
+                  <span style={{ fontSize: "12px", color: "#666" }}>Product image</span>
+                </div>
+              )}
+
+              {/* Variant selector */}
+              {(upsell.variants ?? []).length > 1 && (
+                <s-select
+                  label="Variant"
+                  name={`upsell-${upsell.id}-variant`}
+                  value={upsell.variantId}
+                  onInput={(e: Event) =>
+                    dispatch({
+                      type: "UPDATE_UPSELL",
+                      id: upsell.id,
+                      path: "variantId",
+                      value: (e.target as HTMLSelectElement).value,
+                    })
+                  }
+                >
+                  {(upsell.variants ?? []).map((v) => (
+                    <s-option key={v.id} value={v.id}>
+                      {v.title}
+                    </s-option>
+                  ))}
+                </s-select>
+              )}
 
               {/* Product exclusion */}
               <s-stack direction="block" gap="base">
@@ -1707,11 +1772,24 @@ function CartDrawerPreview({ config }: { config: CartDrawerConfigJSON }) {
                 padding: "12px",
                 marginBottom: "8px",
                 display: "flex",
-                justifyContent: "space-between",
                 alignItems: "center",
+                gap: "10px",
               }}
             >
-              <div>
+              {upsell.imageUrl && (
+                <img
+                  src={upsell.imageUrl}
+                  alt={upsell.title}
+                  style={{
+                    width: "48px",
+                    height: "48px",
+                    objectFit: "cover",
+                    borderRadius: "6px",
+                    flexShrink: 0,
+                  }}
+                />
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div
                   style={{
                     fontWeight: 500,
@@ -1726,6 +1804,11 @@ function CartDrawerPreview({ config }: { config: CartDrawerConfigJSON }) {
                     {upsell.offer.type === "percentage"
                       ? `${upsell.offer.value}% OFF`
                       : `$${upsell.offer.value} OFF`}
+                  </div>
+                )}
+                {(upsell.variants ?? []).length > 1 && (
+                  <div style={{ fontSize: "11px", color: "#888", marginTop: "2px" }}>
+                    {(upsell.variants ?? []).find((v) => v.id === upsell.variantId)?.title || "Select variant"}
                   </div>
                 )}
               </div>

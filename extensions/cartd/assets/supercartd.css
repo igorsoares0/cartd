@@ -231,14 +231,22 @@
 
 .scd-upsell-card {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   padding: 12px;
   margin-bottom: 8px;
+  gap: 10px;
 }
 
 .scd-upsell-card:last-child {
   margin-bottom: 0;
+}
+
+.scd-upsell-img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 6px;
+  flex-shrink: 0;
 }
 
 .scd-upsell-info {
@@ -255,6 +263,17 @@
   font-size: 11px;
   color: #888;
   margin-top: 2px;
+}
+
+.scd-upsell-variant {
+  margin-top: 4px;
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
 }
 
 .scd-upsell-btn {

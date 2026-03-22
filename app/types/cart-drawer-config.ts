@@ -58,7 +58,11 @@ export type Upsell = {
   variantId: string;
 
   title: string;
+  imageUrl: string;
   buttonText: string;
+
+  /** Available variants for the product */
+  variants: { id: string; title: string }[];
 
   /** Hide this upsell if any of these product IDs are in the cart */
   excludeIfProductIds: string[];

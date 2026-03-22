@@ -535,28 +535,49 @@
       if (upsell.offer.type === "percentage") offerText = upsell.offer.value + "% OFF";
       else if (upsell.offer.type === "fixed") offerText = "$" + upsell.offer.value + " OFF";
 
+      var imgHtml = upsell.imageUrl
+        ? '<img class="scd-upsell-img" src="' + escapeHtml(upsell.imageUrl) + '" alt="' + escapeHtml(upsell.title || "") + '" />'
+        : "";
+
+      var variants = upsell.variants || [];
+      var variantHtml = "";
+      if (variants.length > 1) {
+        variantHtml = '<select class="scd-upsell-variant" data-upsell-id="' + upsell.id + '">';
+        for (var vi = 0; vi < variants.length; vi++) {
+          var sel = variants[vi].id === upsell.variantId ? " selected" : "";
+          variantHtml += '<option value="' + escapeHtml(variants[vi].id) + '"' + sel + '>' + escapeHtml(variants[vi].title) + '</option>';
+        }
+        variantHtml += '</select>';
+      }
+
       card.innerHTML =
+        imgHtml +
         '<div class="scd-upsell-info">' +
           '<div class="scd-upsell-title" style="color:' + upsell.design.textColor + '">' + escapeHtml(upsell.title || "Recommended") + "</div>" +
           (offerText ? '<div class="scd-upsell-offer">' + offerText + "</div>" : "") +
+          variantHtml +
         "</div>" +
         '<button class="scd-upsell-btn" style="background:' + upsell.design.buttonColor + ";color:" + upsell.design.buttonTextColor + ";border-radius:" + upsell.design.buttonRadius + 'px">' +
           escapeHtml(upsell.buttonText) +
         "</button>";
 
       card.addEventListener("click", function (e) {
-        if (!e.target.closest(".scd-upsell-btn")) {
+        if (!e.target.closest(".scd-upsell-btn") && !e.target.closest(".scd-upsell-variant")) {
           trackEvent("upsell_click", { productId: upsell.productId });
         }
       });
 
       card.querySelector(".scd-upsell-btn").addEventListener("click", function () {
+        var selectedVariantId = upsell.variantId;
+        var variantSelect = card.querySelector(".scd-upsell-variant");
+        if (variantSelect) selectedVariantId = variantSelect.value;
+
         trackEvent("upsell_add", {
           productId: upsell.productId,
-          variantId: upsell.variantId,
+          variantId: selectedVariantId,
           value: upsell.offer.type !== "none" ? upsell.offer.value : 0,
         });
-        var vid = upsell.variantId.replace("gid://shopify/ProductVariant/", "");
+        var vid = selectedVariantId.replace("gid://shopify/ProductVariant/", "");
         addToCart({ id: parseInt(vid, 10), quantity: 1 });
       });
 
