@@ -122,6 +122,11 @@
   }
 
   function applyConfig() {
+    var drawer = document.getElementById("supercartd-drawer");
+    if (drawer) {
+      drawer.style.backgroundColor = config.body.backgroundColor || "#FFFFFF";
+    }
+
     var h = config.header;
     var headerEl = qs(".scd-header");
     headerEl.style.backgroundColor = h.backgroundColor;

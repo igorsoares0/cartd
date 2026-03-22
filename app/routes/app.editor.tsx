@@ -336,6 +336,7 @@ type EditorAction =
   | { type: "SELECT_SECTION"; section: EditorState["selectedSection"] }
   | { type: "UPDATE_CONFIG"; config: CartDrawerConfigJSON }
   | { type: "UPDATE_HEADER"; field: string; value: string | number }
+  | { type: "UPDATE_BODY"; field: string; value: string }
   | {
       type: "UPDATE_ANNOUNCEMENT";
       field: string;
@@ -371,6 +372,16 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
         config: {
           ...state.config,
           header: { ...state.config.header, [action.field]: action.value },
+        },
+      };
+
+    case "UPDATE_BODY":
+      return {
+        ...state,
+        isDirty: true,
+        config: {
+          ...state.config,
+          body: { ...state.config.body, [action.field]: action.value },
         },
       };
 
@@ -604,6 +615,18 @@ function HeaderSection({
           onInput={(e: Event) =>
             dispatch({
               type: "UPDATE_HEADER",
+              field: "backgroundColor",
+              value: (e.target as HTMLInputElement).value,
+            })
+          }
+        />
+        <s-color-field
+          label="Drawer Background"
+          name="body-bgColor"
+          value={config.body.backgroundColor}
+          onInput={(e: Event) =>
+            dispatch({
+              type: "UPDATE_BODY",
               field: "backgroundColor",
               value: (e.target as HTMLInputElement).value,
             })
@@ -1508,7 +1531,7 @@ function CartDrawerPreview({ config }: { config: CartDrawerConfigJSON }) {
       style={{
         width: "360px",
         height: "640px",
-        backgroundColor: "#fff",
+        backgroundColor: config.body.backgroundColor || "#fff",
         borderRadius: "8px",
         boxShadow: "0 4px 24px rgba(0,0,0,0.12)",
         display: "flex",

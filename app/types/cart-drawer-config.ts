@@ -7,6 +7,8 @@ export type CartDrawerConfigJSON = {
   };
 
   body: {
+    backgroundColor: string;
+
     announcementBar: {
       enabled: boolean;
       text: string;
@@ -99,6 +101,7 @@ export function createDefaultConfig(): CartDrawerConfigJSON {
       backgroundColor: "#FFFFFF",
     },
     body: {
+      backgroundColor: "#FFFFFF",
       announcementBar: {
         enabled: false,
         text: "",
