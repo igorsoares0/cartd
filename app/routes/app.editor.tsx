@@ -1478,61 +1478,81 @@ export default function Editor() {
           minHeight: "calc(100vh - 120px)",
         }}
       >
-        {/* Sidebar - scrollable editor controls */}
+        {/* Sidebar - editor controls */}
         <div
           style={{
             width: "340px",
             minWidth: "340px",
-            maxHeight: "calc(100vh - 120px)",
-            overflowY: "auto",
           }}
         >
           <s-section heading="Sections">
             <s-stack direction="block" gap="base">
               {sections.map((section) => (
-                <s-clickable
-                  key={section.id ?? undefined}
-                  padding="base"
-                  {...(state.selectedSection === section.id
-                    ? { background: "subdued" }
-                    : {})}
-                  onClick={() =>
-                    dispatch({
-                      type: "SELECT_SECTION",
-                      section: section.id,
-                    })
-                  }
-                >
-                  <s-text
+                <div key={section.id ?? undefined}>
+                  <s-clickable
+                    padding="base"
                     {...(state.selectedSection === section.id
-                      ? { type: "strong" }
+                      ? { background: "subdued" }
                       : {})}
+                    onClick={() =>
+                      dispatch({
+                        type: "SELECT_SECTION",
+                        section:
+                          state.selectedSection === section.id
+                            ? null
+                            : section.id,
+                      })
+                    }
                   >
-                    {section.label}
-                  </s-text>
-                </s-clickable>
+                    <s-text
+                      {...(state.selectedSection === section.id
+                        ? { type: "strong" }
+                        : {})}
+                    >
+                      {state.selectedSection === section.id ? "▼ " : "▶ "}
+                      {section.label}
+                    </s-text>
+                  </s-clickable>
+
+                  {/* Section editor inline — right below the clicked section */}
+                  {state.selectedSection === section.id && (
+                    <div style={{ paddingLeft: "8px", paddingTop: "8px" }}>
+                      {section.id === "header" && (
+                        <HeaderSection
+                          config={state.config}
+                          dispatch={dispatch}
+                        />
+                      )}
+                      {section.id === "announcement" && (
+                        <AnnouncementSection
+                          config={state.config}
+                          dispatch={dispatch}
+                        />
+                      )}
+                      {section.id === "rewards" && (
+                        <RewardsSection
+                          config={state.config}
+                          dispatch={dispatch}
+                        />
+                      )}
+                      {section.id === "upsells" && (
+                        <UpsellsSection
+                          config={state.config}
+                          dispatch={dispatch}
+                        />
+                      )}
+                      {section.id === "footer" && (
+                        <FooterSection
+                          config={state.config}
+                          dispatch={dispatch}
+                        />
+                      )}
+                    </div>
+                  )}
+                </div>
               ))}
             </s-stack>
           </s-section>
-
-          <s-divider />
-
-          {/* Section controls */}
-          {state.selectedSection === "header" && (
-            <HeaderSection config={state.config} dispatch={dispatch} />
-          )}
-          {state.selectedSection === "announcement" && (
-            <AnnouncementSection config={state.config} dispatch={dispatch} />
-          )}
-          {state.selectedSection === "rewards" && (
-            <RewardsSection config={state.config} dispatch={dispatch} />
-          )}
-          {state.selectedSection === "upsells" && (
-            <UpsellsSection config={state.config} dispatch={dispatch} />
-          )}
-          {state.selectedSection === "footer" && (
-            <FooterSection config={state.config} dispatch={dispatch} />
-          )}
         </div>
 
         {/* Preview - sticky on the right */}
@@ -1638,47 +1658,49 @@ function CartDrawerPreview({ config }: { config: CartDrawerConfigJSON }) {
         </div>
       )}
 
-      {/* Rewards progress */}
-      {rewardProgress.map((rp) => (
-        <div
-          key={rp.id}
-          style={{
-            padding: "12px 16px",
-            backgroundColor: rp.design.backgroundColor,
-            color: rp.design.textColor,
-            fontSize: "13px",
-          }}
-        >
-          <div style={{ marginBottom: "6px" }}>
-            {rp.met
-              ? rp.design.textAfter
-              : rp.design.textBefore
-                  .replace("{{remaining}}", rp.remaining)
-                  .replace("{{target}}", String(rp.condition.value))}
-          </div>
+      {/* Scrollable content: rewards + items + upsells */}
+      <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+        {/* Rewards progress */}
+        {rewardProgress.map((rp) => (
           <div
+            key={rp.id}
             style={{
-              height: "6px",
-              borderRadius: "3px",
-              backgroundColor: "#E0E0E0",
-              overflow: "hidden",
+              padding: "12px 16px",
+              backgroundColor: rp.design.backgroundColor,
+              color: rp.design.textColor,
+              fontSize: "13px",
             }}
           >
+            <div style={{ marginBottom: "6px" }}>
+              {rp.met
+                ? rp.design.textAfter
+                : rp.design.textBefore
+                    .replace("{{remaining}}", rp.remaining)
+                    .replace("{{target}}", String(rp.condition.value))}
+            </div>
             <div
               style={{
-                height: "100%",
-                width: `${rp.progress}%`,
-                backgroundColor: rp.design.progressColor,
+                height: "6px",
                 borderRadius: "3px",
-                transition: "width 0.3s ease",
+                backgroundColor: "#E0E0E0",
+                overflow: "hidden",
               }}
-            />
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${rp.progress}%`,
+                  backgroundColor: rp.design.progressColor,
+                  borderRadius: "3px",
+                  transition: "width 0.3s ease",
+                }}
+              />
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
 
-      {/* Cart items */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
+        {/* Cart items */}
+        <div style={{ padding: "16px" }}>
         {mockItems.map((item, i) => (
           <div
             key={i}
@@ -1828,6 +1850,7 @@ function CartDrawerPreview({ config }: { config: CartDrawerConfigJSON }) {
               </button>
             </div>
           ))}
+        </div>
       </div>
 
       {/* Footer */}
