@@ -378,7 +378,7 @@
     var rewards = config.body.rewards.filter(function (r) { return r.enabled; });
     if (rewards.length === 0) return;
 
-    var totalPrice = cart.total_price / 100;
+    var totalPrice = (cart.items_subtotal_price || cart.total_price) / 100;
     var totalQty = cart.items.reduce(function (s, i) { return s + i.quantity; }, 0);
 
     rewards.forEach(function (reward) {

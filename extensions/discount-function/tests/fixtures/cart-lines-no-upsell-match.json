@@ -1,0 +1,36 @@
+{
+  "payload": {
+    "export": "cart_lines_discounts_generate_run",
+    "target": "cart.lines.discounts.generate.run",
+    "input": {
+      "discount": {
+        "metafield": {
+          "value": "{\"free_shipping\":[],\"percentage_discount\":[],\"upsells\":[{\"productId\":\"gid://shopify/Product/999\",\"variantId\":\"gid://shopify/ProductVariant/999\",\"offer\":{\"type\":\"percentage\",\"value\":15}}]}"
+        }
+      },
+      "cart": {
+        "lines": [
+          {
+            "id": "gid://shopify/CartLine/0",
+            "quantity": 1,
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "id": "gid://shopify/ProductVariant/111",
+              "product": {
+                "id": "gid://shopify/Product/222"
+              }
+            },
+            "cost": {
+              "subtotalAmount": {
+                "amount": "25.0"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "output": {
+      "operations": []
+    }
+  }
+}

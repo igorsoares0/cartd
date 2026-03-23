@@ -3,36 +3,45 @@
     "export": "cart_lines_discounts_generate_run",
     "target": "cart.lines.discounts.generate.run",
     "input": {
+      "discount": {
+        "metafield": {
+          "value": "{\"free_shipping\":[{\"enabled\":true,\"condition\":{\"type\":\"price\",\"value\":50}}],\"percentage_discount\":[{\"enabled\":true,\"condition\":{\"type\":\"price\",\"value\":30},\"discountValue\":10}],\"upsells\":[{\"productId\":\"gid://shopify/Product/123\",\"variantId\":\"gid://shopify/ProductVariant/456\",\"offer\":{\"type\":\"percentage\",\"value\":20}}]}"
+        }
+      },
       "cart": {
         "lines": [
           {
             "id": "gid://shopify/CartLine/0",
+            "quantity": 1,
+            "merchandise": {
+              "__typename": "ProductVariant",
+              "id": "gid://shopify/ProductVariant/456",
+              "product": {
+                "id": "gid://shopify/Product/123"
+              }
+            },
             "cost": {
               "subtotalAmount": {
-                "amount": "6.0"
+                "amount": "50.0"
               }
             }
           }
         ]
-      },
-      "discount": {
-        "discountClasses": ["PRODUCT", "ORDER", "SHIPPING"]
       }
     },
-    "inputBytes": 126,
     "output": {
       "operations": [
         {
-          "orderDiscountsAdd": {
+          "productDiscountsAdd": {
             "candidates": [
               {
                 "associatedDiscountCode": null,
-                "conditions": null,
-                "message": "10% OFF ORDER",
+                "message": "10% OFF",
                 "targets": [
                   {
-                    "orderSubtotal": {
-                      "excludedCartLineIds": []
+                    "cartLine": {
+                      "id": "gid://shopify/CartLine/0",
+                      "quantity": null
                     }
                   }
                 ],
@@ -41,17 +50,10 @@
                     "value": "10.0"
                   }
                 }
-              }
-            ],
-            "selectionStrategy": "FIRST"
-          }
-        },
-        {
-          "productDiscountsAdd": {
-            "candidates": [
+              },
               {
                 "associatedDiscountCode": null,
-                "message": "20% OFF PRODUCT",
+                "message": "20% OFF",
                 "targets": [
                   {
                     "cartLine": {

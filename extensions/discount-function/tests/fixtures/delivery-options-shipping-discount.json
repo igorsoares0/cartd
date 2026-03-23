@@ -4,13 +4,26 @@
     "target": "cart.delivery-options.discounts.generate.run",
     "input": {
       "discount": {
-        "discountClasses": ["SHIPPING"]
+        "metafield": {
+          "value": "{\"free_shipping\":[{\"enabled\":true,\"condition\":{\"type\":\"price\",\"value\":50}}],\"percentage_discount\":[],\"upsells\":[]}"
+        }
       },
       "cart": {
+        "lines": [
+          {
+            "id": "gid://shopify/CartLine/1",
+            "quantity": 2,
+            "cost": {
+              "subtotalAmount": {
+                "amount": "60.0"
+              }
+            }
+          }
+        ],
         "deliveryGroups": [
-           {
-             "id": "gid://shopify/CartDeliveryGroup/1"
-           }
+          {
+            "id": "gid://shopify/CartDeliveryGroup/1"
+          }
         ]
       }
     },
@@ -21,7 +34,7 @@
             "candidates": [
               {
                 "associatedDiscountCode": null,
-                "message": "FREE DELIVERY",
+                "message": "FREE SHIPPING",
                 "targets": [
                   {
                     "deliveryGroup": {

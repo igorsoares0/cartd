@@ -22,14 +22,66 @@ fn cart_lines_discounts_generate_run(
         Err(_) => return Ok(empty),
     };
 
-    // Get upsells array
-    let upsells = match rules["upsells"].as_array() {
-        Some(arr) => arr,
-        None => return Ok(empty),
-    };
-
     let mut candidates: Vec<schema::ProductDiscountCandidate> = vec![];
 
+    // --- Percentage discount rewards ---
+    if let Some(pct_rules) = rules["percentage_discount"].as_array() {
+        for pct_discount in pct_rules {
+            if pct_discount["enabled"].as_bool() != Some(true) {
+                continue;
+            }
+
+            let condition_type = pct_discount["condition"]["type"].as_str().unwrap_or("price");
+            let condition_value = pct_discount["condition"]["value"].as_f64().unwrap_or(0.0);
+            let discount_value = pct_discount["discountValue"].as_f64().unwrap_or(0.0);
+
+            if condition_value <= 0.0 || discount_value <= 0.0 {
+                continue;
+            }
+
+            let current: f64 = match condition_type {
+                "quantity" => {
+                    let mut sum = 0i32;
+                    for line in input.cart().lines().iter() {
+                        sum += line.quantity();
+                    }
+                    sum as f64
+                }
+                _ => {
+                    let mut sum = 0.0f64;
+                    for line in input.cart().lines().iter() {
+                        sum += line.cost().subtotal_amount().amount().as_f64();
+                    }
+                    sum
+                }
+            };
+
+            if current >= condition_value {
+                for line in input.cart().lines().iter() {
+                    candidates.push(schema::ProductDiscountCandidate {
+                        targets: vec![schema::ProductDiscountCandidateTarget::CartLine(
+                            schema::CartLineTarget {
+                                id: line.id().clone(),
+                                quantity: None,
+                            },
+                        )],
+                        message: Some(format!("{:.0}% OFF", discount_value)),
+                        value: schema::ProductDiscountCandidateValue::Percentage(
+                            schema::Percentage {
+                                value: Decimal(discount_value),
+                            },
+                        ),
+                        associated_discount_code: None,
+                    });
+                }
+                break; // Apply only the first matching percentage reward
+            }
+        }
+    }
+
+    // --- Upsell discounts ---
+    let empty_vec = vec![];
+    let upsells = rules["upsells"].as_array().unwrap_or(&empty_vec);
     for upsell in upsells {
         let offer_type = upsell["offer"]["type"].as_str().unwrap_or("none");
         let offer_value = upsell["offer"]["value"].as_f64().unwrap_or(0.0);

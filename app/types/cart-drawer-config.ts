@@ -128,32 +128,24 @@ export function createDefaultConfig(): CartDrawerConfigJSON {
 export function extractRulesFromConfig(config: CartDrawerConfigJSON) {
   const enabledRewards = config.body.rewards.filter((r) => r.enabled);
 
-  const freeShippingReward = enabledRewards.find(
+  const freeShippingRewards = enabledRewards.filter(
     (r) => r.type === "free_shipping",
   );
 
-  const percentageReward = enabledRewards.find(
+  const percentageRewards = enabledRewards.filter(
     (r) => r.type === "percentage_discount",
   );
 
   return {
-    free_shipping: freeShippingReward
-      ? {
-          enabled: true,
-          condition: freeShippingReward.condition,
-        }
-      : { enabled: false, condition: { type: "price" as const, value: 0 } },
-    percentage_discount: percentageReward
-      ? {
-          enabled: true,
-          condition: percentageReward.condition,
-          discountValue: percentageReward.discountValue ?? 10,
-        }
-      : {
-          enabled: false,
-          condition: { type: "price" as const, value: 0 },
-          discountValue: 0,
-        },
+    free_shipping: freeShippingRewards.map((r) => ({
+      enabled: true,
+      condition: r.condition,
+    })),
+    percentage_discount: percentageRewards.map((r) => ({
+      enabled: true,
+      condition: r.condition,
+      discountValue: r.discountValue ?? 10,
+    })),
     upsells: config.body.upsells
       .filter((u) => u.enabled && u.offer.type !== "none")
       .map((u) => ({

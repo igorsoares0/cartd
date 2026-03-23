@@ -20,35 +20,50 @@ fn cart_delivery_options_discounts_generate_run(
         Err(_) => return Ok(empty),
     };
 
-    // Check if free_shipping is enabled
-    let free_shipping = &rules["free_shipping"];
-    if free_shipping["enabled"].as_bool() != Some(true) {
-        return Ok(empty);
-    }
-
-    let condition_type = free_shipping["condition"]["type"].as_str().unwrap_or("price");
-    let condition_value = free_shipping["condition"]["value"].as_f64().unwrap_or(0.0);
-
-    // Calculate cart total based on condition type
-    let current: f64 = match condition_type {
-        "quantity" => {
-            let mut sum = 0i32;
-            for line in input.cart().lines().iter() {
-                sum += line.quantity();
-            }
-            sum as f64
-        }
-        _ => {
-            let mut sum = 0.0f64;
-            for line in input.cart().lines().iter() {
-                sum += line.cost().subtotal_amount().amount().as_f64();
-            }
-            sum
-        }
+    // Get free_shipping rules array
+    let free_shipping_rules = match rules["free_shipping"].as_array() {
+        Some(arr) => arr,
+        None => return Ok(empty),
     };
 
-    // Check if condition is met
-    if current < condition_value {
+    // Check if any free_shipping rule's condition is met
+    let mut condition_met = false;
+    for rule in free_shipping_rules {
+        if rule["enabled"].as_bool() != Some(true) {
+            continue;
+        }
+
+        let condition_type = rule["condition"]["type"].as_str().unwrap_or("price");
+        let condition_value = rule["condition"]["value"].as_f64().unwrap_or(0.0);
+
+        if condition_value <= 0.0 {
+            continue;
+        }
+
+        let current: f64 = match condition_type {
+            "quantity" => {
+                let mut sum = 0i32;
+                for line in input.cart().lines().iter() {
+                    sum += line.quantity();
+                }
+                sum as f64
+            }
+            _ => {
+                let mut sum = 0.0f64;
+                for line in input.cart().lines().iter() {
+                    sum += line.cost().subtotal_amount().amount().as_f64();
+                }
+                sum
+            }
+        };
+
+        if current >= condition_value {
+            condition_met = true;
+            break;
+        }
+    }
+
+    if !condition_met {
         return Ok(empty);
     }
 
