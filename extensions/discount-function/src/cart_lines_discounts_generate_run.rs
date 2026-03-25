@@ -13,24 +13,27 @@ fn cart_lines_discounts_generate_run(
     // Read metafield
     let metafield_value = match input.discount().metafield() {
         Some(m) => m.value().to_string(),
-        None => {
-            log!("No metafield found on discount");
-            return Ok(empty);
-        }
+        None => return Ok(empty),
     };
-
-    log!("Metafield value length: {}", metafield_value.len());
 
     // Parse rules JSON
     let rules: serde_json::Value = match serde_json::from_str(&metafield_value) {
         Ok(v) => v,
-        Err(e) => {
-            log!("Failed to parse rules JSON: {}", e);
-            return Ok(empty);
-        }
+        Err(_) => return Ok(empty),
     };
 
-    let mut candidates: Vec<schema::ProductDiscountCandidate> = vec![];
+    let mut reward_candidates: Vec<schema::ProductDiscountCandidate> = vec![];
+    let mut upsell_candidates: Vec<schema::ProductDiscountCandidate> = vec![];
+
+    // Collect upsell product/variant IDs to exclude from reward discounts
+    let empty_vec = vec![];
+    let upsells = rules["upsells"].as_array().unwrap_or(&empty_vec);
+    let mut upsell_product_ids: Vec<String> = vec![];
+    for upsell in upsells {
+        if let Some(pid) = upsell["productId"].as_str() {
+            upsell_product_ids.push(pid.to_string());
+        }
+    }
 
     // --- Percentage discount rewards ---
     if let Some(pct_rules) = rules["percentage_discount"].as_array() {
@@ -66,7 +69,18 @@ fn cart_lines_discounts_generate_run(
 
             if current >= condition_value {
                 for line in input.cart().lines().iter() {
-                    candidates.push(schema::ProductDiscountCandidate {
+                    // Skip lines that are upsell products to avoid double-discounting
+                    let is_upsell_line = match line.merchandise() {
+                        Merchandise::ProductVariant(v) => {
+                            upsell_product_ids.contains(&v.product().id().to_string())
+                        }
+                        _ => false,
+                    };
+                    if is_upsell_line {
+                        continue;
+                    }
+
+                    reward_candidates.push(schema::ProductDiscountCandidate {
                         targets: vec![schema::ProductDiscountCandidateTarget::CartLine(
                             schema::CartLineTarget {
                                 id: line.id().clone(),
@@ -88,48 +102,17 @@ fn cart_lines_discounts_generate_run(
     }
 
     // --- Upsell discounts ---
-    let empty_vec = vec![];
-    let upsells = rules["upsells"].as_array().unwrap_or(&empty_vec);
-    log!("Upsells count: {}", upsells.len());
-
-    // Log cart lines for debugging
-    for line in input.cart().lines().iter() {
-        let merchandise = line.merchandise();
-        match merchandise {
-            Merchandise::ProductVariant(v) => {
-                log!(
-                    "Cart line: variant={} product={}",
-                    v.id(),
-                    v.product().id()
-                );
-            }
-            _ => {
-                log!("Cart line: non-variant merchandise");
-            }
-        }
-    }
-
     for upsell in upsells {
         let offer_type = upsell["offer"]["type"].as_str().unwrap_or("none");
         let offer_value = upsell["offer"]["value"].as_f64().unwrap_or(0.0);
 
         if offer_type == "none" || offer_value <= 0.0 {
-            log!("Upsell skipped: offer_type={} offer_value={}", offer_type, offer_value);
             continue;
         }
 
         let upsell_product_id = upsell["productId"].as_str().unwrap_or("");
         let upsell_variant_id = upsell["variantId"].as_str().unwrap_or("");
-        log!(
-            "Upsell rule: product={} variant={} offer={}% (type={})",
-            upsell_product_id,
-            upsell_variant_id,
-            offer_value,
-            offer_type
-        );
 
-        // Find matching cart line
-        let mut matched = false;
         for line in input.cart().lines().iter() {
             let merchandise = line.merchandise();
             let (variant_id, product_id) = match merchandise {
@@ -142,9 +125,6 @@ fn cart_lines_discounts_generate_run(
             if product_id != upsell_product_id && variant_id != upsell_variant_id {
                 continue;
             }
-
-            log!("MATCH found: line={} variant={} product={}", line.id(), variant_id, product_id);
-            matched = true;
 
             let (value, message) = match offer_type {
                 "percentage" => (
@@ -163,7 +143,7 @@ fn cart_lines_discounts_generate_run(
                 _ => continue,
             };
 
-            candidates.push(schema::ProductDiscountCandidate {
+            upsell_candidates.push(schema::ProductDiscountCandidate {
                 targets: vec![schema::ProductDiscountCandidateTarget::CartLine(
                     schema::CartLineTarget {
                         id: line.id().clone(),
@@ -177,24 +157,33 @@ fn cart_lines_discounts_generate_run(
 
             break; // Only discount once per upsell rule
         }
-
-        if !matched {
-            log!("No cart line matched upsell product={} variant={}", upsell_product_id, upsell_variant_id);
-        }
     }
 
-    log!("Total candidates: {}", candidates.len());
+    let mut operations: Vec<schema::CartOperation> = vec![];
 
-    if candidates.is_empty() {
+    // Reward discounts: use Maximum so only the best reward applies
+    if !reward_candidates.is_empty() {
+        operations.push(schema::CartOperation::ProductDiscountsAdd(
+            schema::ProductDiscountsAddOperation {
+                selection_strategy: schema::ProductDiscountSelectionStrategy::Maximum,
+                candidates: reward_candidates,
+            },
+        ));
+    }
+
+    // Upsell discounts: use All so every upsell product gets its discount
+    if !upsell_candidates.is_empty() {
+        operations.push(schema::CartOperation::ProductDiscountsAdd(
+            schema::ProductDiscountsAddOperation {
+                selection_strategy: schema::ProductDiscountSelectionStrategy::All,
+                candidates: upsell_candidates,
+            },
+        ));
+    }
+
+    if operations.is_empty() {
         return Ok(empty);
     }
 
-    Ok(schema::CartLinesDiscountsGenerateRunResult {
-        operations: vec![schema::CartOperation::ProductDiscountsAdd(
-            schema::ProductDiscountsAddOperation {
-                selection_strategy: schema::ProductDiscountSelectionStrategy::Maximum,
-                candidates,
-            },
-        )],
-    })
+    Ok(schema::CartLinesDiscountsGenerateRunResult { operations })
 }
