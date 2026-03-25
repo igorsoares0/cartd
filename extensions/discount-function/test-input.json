@@ -1,0 +1,27 @@
+{
+  "cart": {
+    "lines": [
+      {
+        "id": "gid://shopify/CartLine/1",
+        "quantity": 1,
+        "merchandise": {
+          "__typename": "ProductVariant",
+          "id": "gid://shopify/ProductVariant/52283214954818",
+          "product": {
+            "id": "gid://shopify/Product/10264611684674"
+          }
+        },
+        "cost": {
+          "subtotalAmount": {
+            "amount": "100.00"
+          }
+        }
+      }
+    ]
+  },
+  "discount": {
+    "metafield": {
+      "value": "{\"free_shipping\":[{\"enabled\":true,\"condition\":{\"type\":\"price\",\"value\":300}}],\"percentage_discount\":[],\"upsells\":[{\"productId\":\"gid://shopify/Product/10264611684674\",\"variantId\":\"gid://shopify/ProductVariant/52283214954818\",\"offer\":{\"type\":\"percentage\",\"value\":80}}]}"
+    }
+  }
+}

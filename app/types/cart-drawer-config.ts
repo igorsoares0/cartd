@@ -1,4 +1,6 @@
 export type CartDrawerConfigJSON = {
+  enabled: boolean;
+
   header: {
     title: string;
     fontSize: number;
@@ -98,6 +100,7 @@ export type EditorState = {
 
 export function createDefaultConfig(): CartDrawerConfigJSON {
   return {
+    enabled: true,
     header: {
       title: "Your Cart",
       fontSize: 18,

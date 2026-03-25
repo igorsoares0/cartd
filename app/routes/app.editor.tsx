@@ -46,8 +46,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   `);
   const shopData = await shopResponse.json();
 
+  const config = JSON.parse(record.config) as CartDrawerConfigJSON;
+  // Normalize: old configs without 'enabled' default to true
+  if (config.enabled === undefined) config.enabled = true;
+
   return {
-    config: JSON.parse(record.config) as CartDrawerConfigJSON,
+    config,
     published: record.published,
     shopGid: shopData.data?.shop?.id ?? "",
   };
@@ -214,44 +218,57 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       JSON.stringify(funcs.map((f: any) => ({ id: f.id, title: f.title, apiType: f.apiType }))),
     );
 
-    // Our multi-target function has apiType "discount"
-    const discountFunc = funcs.find((f: any) => f.apiType === "discount");
+    // Multi-target discount functions may report as "discount", "product_discounts", or "shipping_discounts"
+    const discountFunc = funcs.find(
+      (f: any) =>
+        f.apiType === "discount" ||
+        f.apiType === "product_discounts" ||
+        f.apiType === "shipping_discounts",
+    );
 
     let productDiscountGid = configRecord?.productDiscountGid || null;
 
     if (discountFunc) {
       if (productDiscountGid) {
-        // Update existing discount's rules metafield
-        const res = await admin.graphql(
+        // Update existing discount: refresh metafield + ensure it's active (not expired)
+        const updateRes = await admin.graphql(
           `#graphql
-          mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
-            metafieldsSet(metafields: $metafields) {
-              metafields { id }
-              userErrors { field message }
+          mutation UpdateAutoDiscount($id: ID!, $discount: DiscountAutomaticAppInput!) {
+            discountAutomaticAppUpdate(id: $id, automaticAppDiscount: $discount) {
+              automaticAppDiscount { discountId status }
+              userErrors { field message code }
             }
           }`,
           {
             variables: {
-              metafields: [
-                {
-                  ownerId: productDiscountGid,
-                  namespace: "supercartd",
-                  key: "rules",
-                  type: "json",
-                  value: rulesJson,
-                },
-              ],
+              id: productDiscountGid,
+              discount: {
+                startsAt: new Date().toISOString(),
+                endsAt: null,
+                metafields: [
+                  {
+                    namespace: "supercartd",
+                    key: "rules",
+                    type: "json",
+                    value: rulesJson,
+                  },
+                ],
+              },
             },
           },
         );
-        const data = await res.json();
-        const errors = data.data?.metafieldsSet?.userErrors || [];
-        if (errors.length > 0) {
-          console.warn("Discount metafield update errors:", JSON.stringify(errors));
-          // Discount may have been deleted — recreate it
+        const data = await updateRes.json() as any;
+        if (data.errors?.length > 0) {
+          console.warn("Discount update GraphQL errors:", JSON.stringify(data.errors));
           productDiscountGid = null;
-        } else {
-          console.log("Discount: updated rules metafield on", productDiscountGid);
+        }
+        const userErrors = data.data?.discountAutomaticAppUpdate?.userErrors || [];
+        if (userErrors.length > 0) {
+          console.warn("Discount update errors:", JSON.stringify(userErrors));
+          productDiscountGid = null;
+        } else if (!data.errors?.length) {
+          const status = data.data?.discountAutomaticAppUpdate?.automaticAppDiscount?.status;
+          console.log("Discount: updated and reactivated on", productDiscountGid, "status:", status);
         }
       }
 
@@ -289,12 +306,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             },
           },
         );
-        const data = await res.json();
-        const errors =
+        const data = await res.json() as any;
+        // Check for GraphQL-level errors
+        if (data.errors?.length > 0) {
+          console.error("Discount create GraphQL errors:", JSON.stringify(data.errors));
+        }
+        const userErrors =
           data.data?.discountAutomaticAppCreate?.userErrors || [];
-        if (errors.length > 0) {
-          console.error("Discount create errors:", JSON.stringify(errors));
-        } else {
+        if (userErrors.length > 0) {
+          console.error("Discount create errors:", JSON.stringify(userErrors));
+        } else if (!data.errors?.length) {
           productDiscountGid =
             data.data?.discountAutomaticAppCreate?.automaticAppDiscount
               ?.discountId || null;
@@ -302,7 +323,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
       }
     } else {
-      console.warn("Discount function not found in shopifyFunctions");
+      console.warn("Discount function not found in shopifyFunctions. Available:", JSON.stringify(funcs.map((f: any) => f.apiType)));
     }
 
     // Save discount GID
@@ -311,7 +332,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       data: { productDiscountGid },
     });
 
-    return { success: true, intent: "publish" };
+    const debug = {
+      functionFound: !!discountFunc,
+      functionApiType: discountFunc?.apiType ?? null,
+      functionId: discountFunc?.id ?? null,
+      discountGid: productDiscountGid,
+      rulesPreview: rulesJson.slice(0, 300),
+      availableApiTypes: funcs.map((f: any) => f.apiType),
+    };
+    console.log("Publish debug:", JSON.stringify(debug, null, 2));
+
+    return { success: true, intent: "publish", debug };
   }
 
   if (intent === "discard") {
@@ -349,6 +380,7 @@ type EditorAction =
   | { type: "ADD_UPSELL" }
   | { type: "REMOVE_UPSELL"; id: string }
   | { type: "UPDATE_UPSELL"; id: string; path: string; value: unknown }
+  | { type: "TOGGLE_ENABLED" }
   | { type: "SET_SAVING"; value: boolean }
   | { type: "SET_PUBLISHING"; value: boolean }
   | { type: "MARK_CLEAN" };
@@ -364,6 +396,13 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
 
     case "UPDATE_CONFIG":
       return { ...state, config: action.config, isDirty: false };
+
+    case "TOGGLE_ENABLED":
+      return {
+        ...state,
+        isDirty: true,
+        config: { ...state.config, enabled: !state.config.enabled },
+      };
 
     case "UPDATE_HEADER":
       return {
@@ -1396,7 +1435,18 @@ export default function Editor() {
         } else if (data.intent === "publish") {
           dispatch({ type: "MARK_CLEAN" });
           dispatch({ type: "SET_PUBLISHING", value: false });
-          shopify.toast.show("Published successfully");
+          const debug = data.debug as any;
+          if (debug) {
+            console.log("Publish debug:", debug);
+            const discountStatus = debug.discountGid
+              ? "Discount active"
+              : debug.functionFound
+                ? "Function found but discount creation failed"
+                : `Function not found (apiTypes: ${debug.availableApiTypes?.join(", ")})`;
+            shopify.toast.show(`Published — ${discountStatus}`);
+          } else {
+            shopify.toast.show("Published successfully");
+          }
         } else if (data.intent === "discard") {
           dispatch({
             type: "UPDATE_CONFIG",
@@ -1485,6 +1535,20 @@ export default function Editor() {
             minWidth: "340px",
           }}
         >
+          <s-section heading="Cart Drawer">
+            <s-switch
+              label="Enable Cart Drawer"
+              checked={state.config.enabled || undefined}
+              onChange={() => dispatch({ type: "TOGGLE_ENABLED" })}
+            />
+            {!state.config.enabled && (
+              <p style={{ fontSize: "13px", color: "#666", margin: "8px 0 0" }}>
+                The cart drawer will not appear on your storefront.
+              </p>
+            )}
+          </s-section>
+
+          <div style={!state.config.enabled ? { opacity: 0.5, pointerEvents: "none" } : undefined}>
           <s-section heading="Sections">
             <s-stack direction="block" gap="base">
               {sections.map((section) => (
@@ -1553,6 +1617,7 @@ export default function Editor() {
               ))}
             </s-stack>
           </s-section>
+          </div>
         </div>
 
         {/* Preview - sticky on the right */}

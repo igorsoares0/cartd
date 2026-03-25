@@ -213,8 +213,14 @@
 
   // --- ADD-TO-CART INTERCEPTION (set up BEFORE config loads) ---
   function setupInterception() {
+    // Helper: returns true when drawer is disabled via config
+    function isDisabled() {
+      return config && config.enabled === false;
+    }
+
     // 1. Intercept <form action="/cart/add"> submissions
     document.addEventListener("submit", function (e) {
+      if (isDisabled()) return;
       var form = e.target;
       if (!form || !form.action) return;
       if (form.action.indexOf("/cart/add") === -1) return;
@@ -229,6 +235,7 @@
 
     // 2. Intercept clicks on cart links (a[href="/cart"])
     document.addEventListener("click", function (e) {
+      if (isDisabled()) return;
       // Custom trigger attribute
       var trigger = e.target.closest("[data-supercartd-add]");
       if (trigger) {
@@ -253,7 +260,7 @@
       var url = arguments[0];
       var urlStr = typeof url === "string" ? url : (url && url.url ? url.url : "");
 
-      if (urlStr.indexOf("/cart/add") !== -1) {
+      if (urlStr.indexOf("/cart/add") !== -1 && !isDisabled()) {
         // Let the original request through, then open our drawer
         return origFetch.apply(this, arguments).then(function (response) {
           // Small delay so theme can process its response first
@@ -277,7 +284,7 @@
 
     var origXHRSend = XMLHttpRequest.prototype.send;
     XMLHttpRequest.prototype.send = function () {
-      if (this._scdIntercept) {
+      if (this._scdIntercept && !isDisabled()) {
         this.addEventListener("load", function () {
           setTimeout(function () { refreshAndOpen(); }, 100);
         });
@@ -641,6 +648,10 @@
     // Load config (metafield → app proxy fallback) then build drawer
     loadConfig(function (c) {
       config = c;
+      if (config.enabled === false) {
+        console.log("SuperCartD: disabled by config");
+        return;
+      }
       createDrawer();
       drawerReady = true;
 
