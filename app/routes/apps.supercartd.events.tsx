@@ -70,7 +70,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // Strip any PII — only keep safe metadata keys
     const safeMetadata: Record<string, unknown> = {};
     if (metadata) {
-      for (const key of ["productId", "variantId", "cartTotal", "itemCount", "value"]) {
+      for (const key of ["productId", "variantId", "cartTotal", "itemCount", "value", "revenue"]) {
         if (key in metadata) {
           safeMetadata[key] = metadata[key];
         }

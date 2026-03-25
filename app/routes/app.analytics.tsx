@@ -72,7 +72,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         if (e.metadata) {
           try {
             const m = JSON.parse(e.metadata);
-            if (m.value) estimatedRevenue += Number(m.value) || 0;
+            // Use real revenue (product price) if available, fall back to legacy 'value'
+            var rev = m.revenue != null ? m.revenue : m.value;
+            if (rev != null) estimatedRevenue += Number(rev) || 0;
           } catch {}
         }
         break;
@@ -197,7 +199,7 @@ export default function AnalyticsPage() {
         {/* Revenue card */}
         <s-box padding="base" borderWidth="base" borderRadius="base">
           <s-stack direction="inline" gap="base" align-items="center">
-            <s-text type="strong">Estimated Upsell Revenue:</s-text>
+            <s-text type="strong">Upsell Revenue:</s-text>
             <s-heading>${metrics.estimatedRevenue}</s-heading>
           </s-stack>
         </s-box>

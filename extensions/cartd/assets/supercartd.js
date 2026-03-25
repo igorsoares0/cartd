@@ -317,14 +317,18 @@
 
   function addToCart(data) {
     setLoading(true);
-    _fetch("/cart/add.js", {
+    return _fetch("/cart/add.js", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     })
       .then(function (r) {
         if (!r.ok) throw new Error("Add to cart failed: " + r.status);
-        return refreshAndOpen();
+        return r.json();
+      })
+      .then(function (addedItem) {
+        refreshAndOpen();
+        return addedItem;
       })
       .catch(function (err) {
         console.error("SuperCartD:", err);
@@ -568,10 +572,8 @@
           escapeHtml(upsell.buttonText) +
         "</button>";
 
-      card.addEventListener("click", function (e) {
-        if (!e.target.closest(".scd-upsell-btn") && !e.target.closest(".scd-upsell-variant")) {
-          trackEvent("upsell_click", { productId: upsell.productId });
-        }
+      card.addEventListener("click", function () {
+        trackEvent("upsell_click", { productId: upsell.productId });
       });
 
       card.querySelector(".scd-upsell-btn").addEventListener("click", function () {
@@ -579,13 +581,17 @@
         var variantSelect = card.querySelector(".scd-upsell-variant");
         if (variantSelect) selectedVariantId = variantSelect.value;
 
-        trackEvent("upsell_add", {
-          productId: upsell.productId,
-          variantId: selectedVariantId,
-          value: upsell.offer.type !== "none" ? upsell.offer.value : 0,
-        });
         var vid = selectedVariantId.replace("gid://shopify/ProductVariant/", "");
-        addToCart({ id: parseInt(vid, 10), quantity: 1 });
+        addToCart({ id: parseInt(vid, 10), quantity: 1 }).then(function (addedItem) {
+          if (!addedItem) return;
+          // addedItem.price is in cents from Shopify AJAX API
+          var priceInDollars = (addedItem.price || 0) / 100;
+          trackEvent("upsell_add", {
+            productId: upsell.productId,
+            variantId: selectedVariantId,
+            revenue: priceInDollars,
+          });
+        });
       });
 
       container.appendChild(card);
