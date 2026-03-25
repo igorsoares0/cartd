@@ -3,16 +3,24 @@ import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { payload, shop } = await authenticate.webhook(request);
+  try {
+    const { payload, shop, topic } = await authenticate.webhook(request);
 
-  const now = new Date();
-  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    console.log(`[orders-create] Received ${topic} webhook for ${shop}`);
 
-  await prisma.shopUsage.upsert({
-    where: { shop_month: { shop, month } },
-    update: { orderCount: { increment: 1 } },
-    create: { shop, month, orderCount: 1, plan: "starter" },
-  });
+    const now = new Date();
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
-  return new Response(null, { status: 200 });
+    await prisma.shopUsage.upsert({
+      where: { shop_month: { shop, month } },
+      update: { orderCount: { increment: 1 } },
+      create: { shop, month, orderCount: 1, plan: "starter" },
+    });
+
+    console.log(`[orders-create] Order counted for ${shop} (${month})`);
+    return new Response(null, { status: 200 });
+  } catch (err) {
+    console.error("[orders-create] Webhook error:", err);
+    return new Response(null, { status: 500 });
+  }
 };
