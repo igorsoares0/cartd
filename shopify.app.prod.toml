@@ -1,6 +1,6 @@
 client_id = "fda520a1fd68303eac7eebcd89f0ea88"
 name = "cartd"
-application_url = "https://your-vercel-domain.vercel.app"
+application_url = "https://cartd.vercel.app"
 embedded = true
 
 [build]
@@ -25,9 +25,9 @@ api_version = "2026-04"
 scopes = "write_products,read_products,write_discounts,read_orders"
 
 [app_proxy]
-url = "https://your-vercel-domain.vercel.app/apps/supercartd"
+url = "https://cartd.vercel.app/apps/supercartd"
 subpath = "supercartd"
 prefix = "apps"
 
 [auth]
-redirect_urls = [ "https://your-vercel-domain.vercel.app/api/auth" ]
+redirect_urls = [ "https://cartd.vercel.app/api/auth" ]
