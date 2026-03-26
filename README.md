@@ -25,12 +25,28 @@ shopify app init --template=https://github.com/Shopify/shopify-app-template-reac
 ### Local Development
 
 ```shell
-shopify app dev
+npm run dev
 ```
 
 Press P to open the URL to your app. Once you click install, you can start development.
 
 Local development is powered by [the Shopify CLI](https://shopify.dev/docs/apps/tools/cli). It logs into your account, connects to an app, provides environment variables, updates remote config, creates a tunnel and provides commands to generate extensions.
+
+Copy `.env.example` to `.env` for local values before running development commands.
+
+### Environment modes (dev/prod)
+
+This app now has separated modes for development and production:
+
+- `npm run dev` / `npm run dev:local`: uses `shopify.app.dev.toml` and runs local Shopify development.
+- `npm run deploy:prod`: switches to `shopify.app.prod.toml` and deploys app config/webhooks for production.
+
+Use these commands to switch config files manually when needed:
+
+```shell
+npm run shopify:config:dev
+npm run shopify:config:prod
+```
 
 ### Authenticating and querying data
 
@@ -114,6 +130,27 @@ Using pnpm:
 
 ```shell
 pnpm run build
+```
+
+### Production on Vercel
+
+1. Update `shopify.app.prod.toml` with your real Vercel domain (replace `your-vercel-domain.vercel.app`).
+2. In Vercel project settings, configure these environment variables:
+   - `NODE_ENV=production`
+   - `SHOPIFY_API_KEY`
+   - `SHOPIFY_API_SECRET`
+   - `SHOPIFY_APP_URL` (your public Vercel URL)
+   - `SCOPES`
+   - `DATABASE_URL`
+   - `SHOP_CUSTOM_DOMAIN` (optional)
+3. Set Vercel build command to `npm run vercel-build` (or keep `vercel.json` in this repo).
+4. Deploy on Vercel.
+5. Run `npm run deploy:prod` to sync production app config/webhooks with Shopify.
+
+If you need to run the production server outside Vercel, use:
+
+```shell
+npm run start:prod
 ```
 
 ## Hosting
