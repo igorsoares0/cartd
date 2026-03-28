@@ -1491,6 +1491,7 @@ export default function Editor() {
 
   const isBusy = state.isSaving || state.isPublishing;
   const previewDockWidth = "clamp(420px, 34vw, 560px)";
+  const editorPanelWidth = "clamp(400px, 30vw, 500px)";
 
   return (
     <s-page heading="Cart Drawer Editor" inline-size="full">
@@ -1526,102 +1527,130 @@ export default function Editor() {
           display: "flex",
           gap: "20px",
           alignItems: "flex-start",
-          height: "calc(100dvh - 120px)",
-          paddingRight: `calc(${previewDockWidth} + 20px)`,
-          overflow: "hidden",
+          minHeight: "calc(100dvh - 120px)",
+          paddingRight: previewDockWidth,
+          marginRight: "calc(50% - 50vw)",
         }}
       >
-        {/* Sidebar - editor controls */}
+        {/* Sidebar area - use page scroll (native scrollbar on window right side) */}
         <div
           style={{
-            width: "340px",
-            minWidth: "340px",
-            height: "100%",
-            overflowY: "auto",
+            flex: 1,
+            paddingRight: "16px",
+            paddingBottom: "24px",
           }}
         >
-          <s-section heading="Cart Drawer">
-            <s-switch
-              label="Enable Cart Drawer"
-              checked={state.config.enabled || undefined}
-              onChange={() => dispatch({ type: "TOGGLE_ENABLED" })}
-            />
-            {!state.config.enabled && (
-              <p style={{ fontSize: "13px", color: "#666", margin: "8px 0 0" }}>
-                The cart drawer will not appear on your storefront.
-              </p>
-            )}
-          </s-section>
+          <div
+            style={{
+              width: editorPanelWidth,
+              minWidth: editorPanelWidth,
+              maxWidth: editorPanelWidth,
+              flexShrink: 0,
+              paddingBottom: "16px",
+            }}
+          >
+            <div style={{ display: "grid", gap: "14px" }}>
+              <s-section heading="Cart Drawer">
+                <s-switch
+                  label="Enable Cart Drawer"
+                  checked={state.config.enabled || undefined}
+                  onChange={() => dispatch({ type: "TOGGLE_ENABLED" })}
+                />
+                {!state.config.enabled && (
+                  <p style={{ fontSize: "13px", color: "#666", margin: "8px 0 0" }}>
+                    The cart drawer will not appear on your storefront.
+                  </p>
+                )}
+              </s-section>
 
-          <div style={!state.config.enabled ? { opacity: 0.5, pointerEvents: "none" } : undefined}>
-          <s-section heading="Sections">
-            <s-stack direction="block" gap="base">
-              {sections.map((section) => (
-                <div key={section.id ?? undefined}>
-                  <s-clickable
-                    padding="base"
-                    {...(state.selectedSection === section.id
-                      ? { background: "subdued" }
-                      : {})}
-                    onClick={() =>
-                      dispatch({
-                        type: "SELECT_SECTION",
-                        section:
-                          state.selectedSection === section.id
-                            ? null
-                            : section.id,
-                      })
-                    }
-                  >
-                    <s-text
-                      {...(state.selectedSection === section.id
-                        ? { type: "strong" }
-                        : {})}
-                    >
-                      {state.selectedSection === section.id ? "▼ " : "▶ "}
-                      {section.label}
-                    </s-text>
-                  </s-clickable>
+              <div style={!state.config.enabled ? { opacity: 0.5, pointerEvents: "none" } : undefined}>
+                <s-section heading="Sections">
+                  <s-stack direction="block" gap="base">
+                    {sections.map((section) => {
+                      const isSelected = state.selectedSection === section.id;
+                      return (
+                        <div key={section.id ?? undefined}>
+                          <div
+                            style={{
+                              borderRadius: "10px",
+                              overflow: "hidden",
+                              border: isSelected ? "1px solid #8c9196" : "1px solid transparent",
+                            }}
+                          >
+                            <s-clickable
+                              padding="base"
+                              {...(isSelected ? { background: "subdued" } : {})}
+                              onClick={() =>
+                                dispatch({
+                                  type: "SELECT_SECTION",
+                                  section: isSelected ? null : section.id,
+                                })
+                              }
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  gap: "8px",
+                                }}
+                              >
+                                <s-text {...(isSelected ? { type: "strong" } : {})}>{section.label}</s-text>
+                                <span style={{ fontSize: "12px", color: "#6d7175" }}>{isSelected ? "▼" : "▶"}</span>
+                              </div>
+                            </s-clickable>
+                          </div>
 
-                  {/* Section editor inline — right below the clicked section */}
-                  {state.selectedSection === section.id && (
-                    <div style={{ paddingLeft: "8px", paddingTop: "8px" }}>
-                      {section.id === "header" && (
-                        <HeaderSection
-                          config={state.config}
-                          dispatch={dispatch}
-                        />
-                      )}
-                      {section.id === "announcement" && (
-                        <AnnouncementSection
-                          config={state.config}
-                          dispatch={dispatch}
-                        />
-                      )}
-                      {section.id === "rewards" && (
-                        <RewardsSection
-                          config={state.config}
-                          dispatch={dispatch}
-                        />
-                      )}
-                      {section.id === "upsells" && (
-                        <UpsellsSection
-                          config={state.config}
-                          dispatch={dispatch}
-                        />
-                      )}
-                      {section.id === "footer" && (
-                        <FooterSection
-                          config={state.config}
-                          dispatch={dispatch}
-                        />
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </s-stack>
-          </s-section>
+                          {/* Section editor inline — right below the clicked section */}
+                          {isSelected && (
+                            <div
+                              style={{
+                                marginTop: "8px",
+                                padding: "12px",
+                                borderRadius: "10px",
+                                border: "1px solid #e1e3e5",
+                                background: "#fafbfb",
+                              }}
+                            >
+                              {section.id === "header" && (
+                                <HeaderSection
+                                  config={state.config}
+                                  dispatch={dispatch}
+                                />
+                              )}
+                              {section.id === "announcement" && (
+                                <AnnouncementSection
+                                  config={state.config}
+                                  dispatch={dispatch}
+                                />
+                              )}
+                              {section.id === "rewards" && (
+                                <RewardsSection
+                                  config={state.config}
+                                  dispatch={dispatch}
+                                />
+                              )}
+                              {section.id === "upsells" && (
+                                <UpsellsSection
+                                  config={state.config}
+                                  dispatch={dispatch}
+                                />
+                              )}
+                              {section.id === "footer" && (
+                                <FooterSection
+                                  config={state.config}
+                                  dispatch={dispatch}
+                                />
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </s-stack>
+                </s-section>
+              </div>
+            </div>
           </div>
         </div>
 
