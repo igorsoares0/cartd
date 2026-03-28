@@ -1490,6 +1490,7 @@ export default function Editor() {
   ];
 
   const isBusy = state.isSaving || state.isPublishing;
+  const previewDockWidth = "clamp(420px, 34vw, 560px)";
 
   return (
     <s-page heading="Cart Drawer Editor" inline-size="full">
@@ -1525,7 +1526,9 @@ export default function Editor() {
           display: "flex",
           gap: "20px",
           alignItems: "flex-start",
-          minHeight: "calc(100vh - 120px)",
+          height: "calc(100dvh - 120px)",
+          paddingRight: `calc(${previewDockWidth} + 20px)`,
+          overflow: "hidden",
         }}
       >
         {/* Sidebar - editor controls */}
@@ -1533,6 +1536,8 @@ export default function Editor() {
           style={{
             width: "340px",
             minWidth: "340px",
+            height: "100%",
+            overflowY: "auto",
           }}
         >
           <s-section heading="Cart Drawer">
@@ -1623,16 +1628,20 @@ export default function Editor() {
         {/* Preview - sticky on the right */}
         <div
           style={{
-            flex: 1,
-            position: "sticky",
-            top: "20px",
+            position: "fixed",
+            top: "0",
+            right: "0",
+            width: previewDockWidth,
+            height: "100dvh",
             display: "flex",
-            justifyContent: "center",
-            alignItems: "flex-start",
-            minHeight: "600px",
-            background: "#f6f6f7",
-            borderRadius: "12px",
-            padding: "24px",
+            justifyContent: "stretch",
+            alignItems: "stretch",
+            minHeight: 0,
+            padding: 0,
+            overflow: "hidden",
+            borderLeft: "1px solid #dfe3e8",
+            zIndex: 5,
+            background: "#fff",
           }}
         >
           <CartDrawerPreview config={state.config} />
@@ -1679,11 +1688,12 @@ function CartDrawerPreview({ config }: { config: CartDrawerConfigJSON }) {
   return (
     <div
       style={{
-        width: "360px",
-        height: "640px",
+        width: "100%",
+        maxWidth: "100%",
+        height: "100dvh",
         backgroundColor: config.body.backgroundColor || "#fff",
-        borderRadius: "8px",
-        boxShadow: "0 4px 24px rgba(0,0,0,0.12)",
+        borderRadius: 0,
+        boxShadow: "none",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
@@ -1723,8 +1733,8 @@ function CartDrawerPreview({ config }: { config: CartDrawerConfigJSON }) {
         </div>
       )}
 
-      {/* Scrollable content: rewards + items + upsells */}
-      <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+      {/* Static content in preview: rewards + items + upsells */}
+      <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
         {/* Rewards progress */}
         {rewardProgress.map((rp) => (
           <div
