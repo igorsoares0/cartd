@@ -39,6 +39,30 @@
     return obj;
   }
 
+  // Check billing status via app proxy — called after config is loaded
+  function checkBillingStatus() {
+    _fetch("/apps/supercartd/status")
+      .then(function (r) {
+        if (!r.ok) return null;
+        return r.json();
+      })
+      .then(function (data) {
+        if (!data || !config) return;
+        var changed = false;
+        if (data.overLimit && !config._overLimit) {
+          config._overLimit = true;
+          changed = true;
+        } else if (!data.overLimit && config._overLimit) {
+          config._overLimit = false;
+          changed = true;
+        }
+        if (changed && cart) renderCart();
+      })
+      .catch(function () {
+        // Silent fail — never block UX for billing check
+      });
+  }
+
   function loadConfig(cb) {
     // 1. Try embedded metafield config (zero latency)
     if (window.__SUPERCARTD_CONFIG__) {
@@ -47,6 +71,8 @@
         if (parsed) {
           console.log("SuperCartD: config loaded from metafield");
           cb(parsed);
+          // Check billing status in parallel — may degrade features after render
+          checkBillingStatus();
           return;
         }
       } catch (e) {
@@ -54,7 +80,7 @@
       }
     }
     console.warn("SuperCartD: metafield config unavailable, trying app proxy...");
-    // 2. Fallback: fetch from app proxy
+    // 2. Fallback: fetch from app proxy (already includes _overLimit flag)
     _fetch("/apps/supercartd/config")
       .then(function (r) {
         if (!r.ok) {

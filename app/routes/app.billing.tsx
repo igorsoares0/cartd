@@ -44,6 +44,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     orderLimit: billing.orderLimit, // null = unlimited, number = limit
     month: billing.month,
     isOverLimit: billing.isOverLimit,
+    onTrial: billing.onTrial,
+    trialEndsAt: billing.trialEndsAt,
     justConfirmed,
     trialDays: TRIAL_DAYS,
     plans: {
@@ -175,6 +177,8 @@ export default function Billing() {
     orderLimit,
     month,
     isOverLimit,
+    onTrial,
+    trialEndsAt,
     justConfirmed,
     trialDays,
     plans,
@@ -229,11 +233,21 @@ export default function Billing() {
         </s-banner>
       )}
 
+      {onTrial && trialEndsAt && (
+        <s-banner heading="Free trial active" tone="info" dismissible>
+          Your {trialDays}-day free trial ends on{" "}
+          {new Date(trialEndsAt).toLocaleDateString()}. All features are
+          available with no order limits during the trial.
+        </s-banner>
+      )}
+
       <s-section heading="Current Usage">
         <s-stack direction="block" gap="base">
           <s-stack direction="inline" gap="base">
             <s-text type="strong">Plan:</s-text>
-            <s-badge tone="info">{planData.name}</s-badge>
+            <s-badge tone="info">
+              {planData.name}{onTrial ? " (Trial)" : ""}
+            </s-badge>
           </s-stack>
 
           <s-stack direction="inline" gap="base">
