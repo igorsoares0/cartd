@@ -8,38 +8,49 @@ import { useFetcher, useLoaderData } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import prisma from "../db.server";
-
-const PLANS = {
-  starter: { name: "Starter", orders: 100, price: 9.99 },
-  growth: { name: "Growth", orders: 500, price: 29.99 },
-  pro: { name: "Pro", orders: Infinity, price: 79.99 },
-} as const;
-
-type PlanKey = keyof typeof PLANS;
+import {
+  PLANS,
+  TRIAL_DAYS,
+  getShopBilling,
+  getActiveSubscription,
+  cancelActiveSubscription,
+  type PlanKey,
+} from "../utils/billing.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const shop = session.shop;
 
-  const now = new Date();
-  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  // syncShopPlan inside getShopBilling verifies the REAL subscription with Shopify
+  const billing = await getShopBilling(admin, shop);
 
-  let usage = await prisma.shopUsage.findUnique({
-    where: { shop_month: { shop, month } },
-  });
+  // Check if returning from Shopify billing confirmation
+  const url = new URL(request.url);
+  const chargeId = url.searchParams.get("charge_id");
+  let justConfirmed = false;
 
-  if (!usage) {
-    usage = await prisma.shopUsage.create({
-      data: { shop, month, orderCount: 0, plan: "starter" },
-    });
+  if (chargeId) {
+    // The merchant just returned from the Shopify billing screen.
+    // getShopBilling already synced the plan from the active subscription,
+    // so the plan is now correct in DB. We just flag it for the UI toast.
+    justConfirmed =
+      billing.plan !== "starter" || billing.subscriptionGid !== null;
   }
 
   return {
-    currentPlan: usage.plan as PlanKey,
-    orderCount: usage.orderCount,
-    month: usage.month,
-    plans: PLANS,
+    currentPlan: billing.plan,
+    hasActiveSubscription: billing.subscriptionGid !== null,
+    orderCount: billing.orderCount,
+    orderLimit: billing.orderLimit, // null = unlimited, number = limit
+    month: billing.month,
+    isOverLimit: billing.isOverLimit,
+    justConfirmed,
+    trialDays: TRIAL_DAYS,
+    plans: {
+      starter: { name: "Starter", orders: 100, price: 9.99 },
+      growth: { name: "Growth", orders: 500, price: 29.99 },
+      pro: { name: "Pro", orders: null as number | null, price: 79.99 },
+    },
   };
 };
 
@@ -47,23 +58,70 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const shop = session.shop;
   const formData = await request.formData();
+  const intent = formData.get("intent") as string;
+
+  // --- Cancel subscription ---
+  if (intent === "cancel") {
+    const result = await cancelActiveSubscription(admin, shop);
+    if (result.success) {
+      return { success: true, intent: "cancel" };
+    }
+    return { success: false, error: result.error ?? "Failed to cancel" };
+  }
+
+  // --- Create/change subscription ---
   const plan = formData.get("plan") as PlanKey;
 
   if (!PLANS[plan]) {
     return { success: false, error: "Invalid plan" };
   }
 
-  const planData = PLANS[plan];
+  // Guard: check if there's already an active subscription to prevent duplicates
+  const existingSub = await getActiveSubscription(admin);
+  if (existingSub) {
+    // Shopify replaces the existing subscription when a new one is created,
+    // but only after the merchant confirms. If the merchant spam-clicks,
+    // multiple confirmationUrls could be generated. We allow it because
+    // Shopify handles dedup on their side — only the last confirmed one wins.
+    // However, if they're already on the requested plan, block the request.
+    const existingPrice =
+      existingSub.lineItems?.[0]?.plan?.pricingDetails?.price?.amount;
+    const requestedPrice = PLANS[plan].price;
+    if (
+      existingPrice &&
+      parseFloat(existingPrice).toFixed(2) === requestedPrice.toFixed(2)
+    ) {
+      return {
+        success: false,
+        error: "You're already on this plan",
+      };
+    }
+  }
 
-  // Create Shopify recurring charge
+  const planData = PLANS[plan];
+  const isTest = process.env.NODE_ENV !== "production";
+
+  // Build the embedded app return URL
+  // For embedded apps, Shopify expects a path relative to the app, not a full URL.
+  // The returnUrl should use the app URL so Shopify can redirect back into the admin iframe.
+  const appUrl = process.env.SHOPIFY_APP_URL || "";
+  const returnUrl = `${appUrl}/app/billing`;
+
   const response = await admin.graphql(
     `#graphql
-    mutation AppSubscriptionCreate($name: String!, $lineItems: [AppSubscriptionLineItemInput!]!, $returnUrl: URL!) {
+    mutation AppSubscriptionCreate(
+      $name: String!
+      $lineItems: [AppSubscriptionLineItemInput!]!
+      $returnUrl: URL!
+      $test: Boolean
+      $trialDays: Int
+    ) {
       appSubscriptionCreate(
         name: $name
         lineItems: $lineItems
         returnUrl: $returnUrl
-        test: true
+        test: $test
+        trialDays: $trialDays
       ) {
         appSubscription { id }
         confirmationUrl
@@ -73,12 +131,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     {
       variables: {
         name: `SuperCartD ${planData.name}`,
-        returnUrl: `https://${shop}/admin/apps/cartd/app/billing`,
+        returnUrl,
+        test: isTest,
+        trialDays: TRIAL_DAYS,
         lineItems: [
           {
             plan: {
               appRecurringPricingDetails: {
                 price: { amount: planData.price, currencyCode: "USD" },
+                interval: "EVERY_30_DAYS",
               },
             },
           },
@@ -88,50 +149,58 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   );
 
   const result = await response.json();
-  const confirmationUrl =
-    result.data?.appSubscriptionCreate?.confirmationUrl;
+  const data = result.data?.appSubscriptionCreate;
+  const confirmationUrl = data?.confirmationUrl;
+  const userErrors = data?.userErrors ?? [];
 
-  if (confirmationUrl) {
-    // Update plan in DB
-    const now = new Date();
-    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    await prisma.shopUsage.upsert({
-      where: { shop_month: { shop, month } },
-      update: { plan },
-      create: { shop, month, orderCount: 0, plan },
-    });
-
-    return { success: true, confirmationUrl };
+  if (userErrors.length > 0) {
+    return { success: false, error: userErrors[0].message };
   }
 
-  return {
-    success: false,
-    error:
-      result.data?.appSubscriptionCreate?.userErrors?.[0]?.message ??
-      "Failed to create subscription",
-  };
+  if (confirmationUrl) {
+    // DO NOT update plan in DB here.
+    // The plan will be synced from Shopify's actual subscription
+    // when the merchant returns via returnUrl (loader runs syncShopPlan).
+    return { success: true, intent: "subscribe", confirmationUrl };
+  }
+
+  return { success: false, error: "Failed to create subscription" };
 };
 
 export default function Billing() {
-  const { currentPlan, orderCount, month, plans } =
-    useLoaderData<typeof loader>();
+  const {
+    currentPlan,
+    hasActiveSubscription,
+    orderCount,
+    orderLimit,
+    month,
+    isOverLimit,
+    justConfirmed,
+    trialDays,
+    plans,
+  } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
 
   const planData = plans[currentPlan as PlanKey];
-  const orderLimit = planData.orders;
   const usagePercent =
-    orderLimit === Infinity
+    orderLimit === null
       ? 0
       : Math.min((orderCount / orderLimit) * 100, 100);
-  const isOverLimit = orderLimit !== Infinity && orderCount >= orderLimit;
+
+  useEffect(() => {
+    if (justConfirmed) {
+      shopify.toast.show("Plan updated successfully!");
+    }
+  }, [justConfirmed, shopify]);
 
   useEffect(() => {
     if (fetcher.data && fetcher.state === "idle") {
       const data = fetcher.data as Record<string, unknown>;
       if (data.confirmationUrl) {
-        // Redirect to Shopify billing confirmation
         open(data.confirmationUrl as string, "_top");
+      } else if (data.intent === "cancel" && data.success) {
+        shopify.toast.show("Subscription cancelled. You're now on the Starter plan.");
       } else if (data.error) {
         shopify.toast.show(data.error as string);
       }
@@ -140,10 +209,14 @@ export default function Billing() {
 
   const handleSelectPlan = useCallback(
     (plan: string) => {
-      fetcher.submit({ plan }, { method: "POST" });
+      fetcher.submit({ intent: "subscribe", plan }, { method: "POST" });
     },
     [fetcher],
   );
+
+  const handleCancel = useCallback(() => {
+    fetcher.submit({ intent: "cancel" }, { method: "POST" });
+  }, [fetcher]);
 
   const isBusy = fetcher.state !== "idle";
 
@@ -172,11 +245,11 @@ export default function Billing() {
             <s-text type="strong">Orders:</s-text>
             <s-text>
               {orderCount} /{" "}
-              {orderLimit === Infinity ? "Unlimited" : orderLimit}
+              {orderLimit === null ? "Unlimited" : orderLimit}
             </s-text>
           </s-stack>
 
-          {orderLimit !== Infinity && (
+          {orderLimit !== null && (
             <div
               style={{
                 height: "8px",
@@ -197,45 +270,60 @@ export default function Billing() {
               />
             </div>
           )}
+
+          {hasActiveSubscription && currentPlan !== "starter" && (
+            <s-button
+              variant="tertiary"
+              tone="critical"
+              onClick={handleCancel}
+              {...(isBusy ? { loading: true } : {})}
+            >
+              Cancel subscription
+            </s-button>
+          )}
         </s-stack>
       </s-section>
 
       <s-section heading="Plans">
+        <s-text>
+          All paid plans include a {trialDays}-day free trial.
+        </s-text>
+
         <s-grid grid-template-columns="1fr 1fr 1fr" gap="base">
-          {(Object.entries(plans) as [PlanKey, (typeof plans)[PlanKey]][]).map(
-            ([key, plan]) => (
-              <s-box
-                key={key}
-                padding="base"
-                borderWidth="base"
-                borderRadius="base"
-                {...(key === currentPlan ? { background: "subdued" } : {})}
-              >
-                <s-stack direction="block" gap="base">
-                  <s-heading>{plan.name}</s-heading>
-                  <s-text type="strong">
-                    ${plan.price}/mo
-                  </s-text>
-                  <s-text>
-                    {plan.orders === Infinity
-                      ? "Unlimited orders"
-                      : `Up to ${plan.orders} orders/month`}
-                  </s-text>
-                  {key === currentPlan ? (
-                    <s-badge tone="success">Current Plan</s-badge>
-                  ) : (
-                    <s-button
-                      variant="primary"
-                      onClick={() => handleSelectPlan(key)}
-                      {...(isBusy ? { loading: true } : {})}
-                    >
-                      {(PLANS[key].price > PLANS[currentPlan as PlanKey].price) ? "Upgrade" : "Switch"}
-                    </s-button>
-                  )}
-                </s-stack>
-              </s-box>
-            ),
-          )}
+          {(
+            Object.entries(plans) as [PlanKey, (typeof plans)[PlanKey]][]
+          ).map(([key, plan]) => (
+            <s-box
+              key={key}
+              padding="base"
+              borderWidth="base"
+              borderRadius="base"
+              {...(key === currentPlan ? { background: "subdued" } : {})}
+            >
+              <s-stack direction="block" gap="base">
+                <s-heading>{plan.name}</s-heading>
+                <s-text type="strong">${plan.price}/mo</s-text>
+                <s-text>
+                  {plan.orders === null
+                    ? "Unlimited orders"
+                    : `Up to ${plan.orders} orders/month`}
+                </s-text>
+                {key === currentPlan ? (
+                  <s-badge tone="success">Current Plan</s-badge>
+                ) : (
+                  <s-button
+                    variant="primary"
+                    onClick={() => handleSelectPlan(key)}
+                    {...(isBusy ? { disabled: true } : {})}
+                  >
+                    {plan.price > plans[currentPlan as PlanKey].price
+                      ? "Upgrade"
+                      : "Downgrade"}
+                  </s-button>
+                )}
+              </s-stack>
+            </s-box>
+          ))}
         </s-grid>
       </s-section>
     </s-page>

@@ -44,12 +44,20 @@ model CartDrawerConfig {
   updatedAt           DateTime @updatedAt
 }
 
+model ShopPlan {
+  id              String   @id @default(cuid())
+  shop            String   @unique
+  plan            String   @default("starter") // starter | growth | pro
+  subscriptionGid String?  // Shopify AppSubscription GID
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
 model ShopUsage {
   id         String @id @default(cuid())
   shop       String
   month      String // "2026-03"
   orderCount Int    @default(0)
-  plan       String @default("starter") // starter | growth | pro
 
   @@unique([shop, month])
 }

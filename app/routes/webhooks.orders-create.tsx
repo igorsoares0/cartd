@@ -4,7 +4,7 @@ import prisma from "../db.server";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   try {
-    const { payload, shop, topic } = await authenticate.webhook(request);
+    const { shop, topic } = await authenticate.webhook(request);
 
     console.log(`[orders-create] Received ${topic} webhook for ${shop}`);
 
@@ -14,7 +14,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     await prisma.shopUsage.upsert({
       where: { shop_month: { shop, month } },
       update: { orderCount: { increment: 1 } },
-      create: { shop, month, orderCount: 1, plan: "starter" },
+      create: { shop, month, orderCount: 1 },
     });
 
     console.log(`[orders-create] Order counted for ${shop} (${month})`);

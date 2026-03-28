@@ -17,11 +17,15 @@ import {
   type Reward,
   type Upsell,
 } from "../types/cart-drawer-config";
+import { getShopBilling } from "../utils/billing.server";
 
 // --- LOADER ---
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const shop = session.shop;
+
+  // Check billing limits
+  const billing = await getShopBilling(admin, shop);
 
   let record = await prisma.cartDrawerConfig.findUnique({ where: { shop } });
 
@@ -54,6 +58,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     config,
     published: record.published,
     shopGid: shopData.data?.shop?.id ?? "",
+    billing: {
+      plan: billing.plan,
+      orderCount: billing.orderCount,
+      orderLimit: billing.orderLimit,
+      isOverLimit: billing.isOverLimit,
+    },
   };
 };
 
@@ -1490,17 +1500,27 @@ export default function Editor() {
   ];
 
   const isBusy = state.isSaving || state.isPublishing;
+  const { billing } = loaderData;
+  const isOverLimit = billing.isOverLimit;
   const previewDockWidth = "clamp(420px, 34vw, 560px)";
   const editorPanelWidth = "clamp(400px, 30vw, 500px)";
 
   return (
     <s-page heading="Cart Drawer Editor" inline-size="full">
+      {isOverLimit && (
+        <s-banner heading="Plan limit reached" tone="warning">
+          You've used all {billing.orderLimit} orders for this month on the{" "}
+          {billing.plan} plan. Publishing is disabled until you upgrade.{" "}
+          <a href="/app/billing">Upgrade your plan</a>
+        </s-banner>
+      )}
+
       <s-button
         slot="primary-action"
         variant="primary"
         onClick={handlePublish}
         {...(state.isPublishing ? { loading: true } : {})}
-        {...(isBusy ? { disabled: true } : {})}
+        {...(isBusy || isOverLimit ? { disabled: true } : {})}
       >
         Publish
       </s-button>

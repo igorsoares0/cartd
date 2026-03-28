@@ -376,9 +376,18 @@
   function renderCart() {
     if (!cart || !config) return;
 
-    renderRewards();
+    // When shop is over plan limit, only render basic cart (items + footer)
+    // Never block checkout — just hide upsells and rewards
+    var degraded = config._overLimit === true;
+
+    if (!degraded) renderRewards();
+    else qs(".scd-rewards").innerHTML = "";
+
     renderItems();
-    renderUpsells();
+
+    if (!degraded) renderUpsells();
+    else qs(".scd-upsells").innerHTML = "";
+
     renderFooter();
   }
 
