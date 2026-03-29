@@ -8,6 +8,7 @@ import { useFetcher, useLoaderData } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
+import prisma from "../db.server";
 import {
   PLANS,
   TRIAL_DAYS,
@@ -45,6 +46,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     month: billing.month,
     isOverLimit: billing.isOverLimit,
     onTrial: billing.onTrial,
+    hasUsedTrial: billing.hasUsedTrial,
     trialEndsAt: billing.trialEndsAt,
     justConfirmed,
     trialDays: TRIAL_DAYS,
@@ -103,11 +105,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const planData = PLANS[plan];
   const isTest = process.env.NODE_ENV !== "production";
 
-  // Build the embedded app return URL
-  // For embedded apps, Shopify expects a path relative to the app, not a full URL.
-  // The returnUrl should use the app URL so Shopify can redirect back into the admin iframe.
-  const appUrl = process.env.SHOPIFY_APP_URL || "";
+  // Validate returnUrl — SHOPIFY_APP_URL must be a full absolute URL
+  const appUrl = process.env.SHOPIFY_APP_URL;
+  if (!appUrl || !appUrl.startsWith("https://")) {
+    return {
+      success: false,
+      error:
+        "App configuration error: SHOPIFY_APP_URL is missing or invalid. Contact support.",
+    };
+  }
   const returnUrl = `${appUrl}/app/billing`;
+
+  // Only offer trial on the merchant's first-ever subscription
+  const shopPlan = await prisma.shopPlan.findUnique({ where: { shop } });
+  const trialDays =
+    shopPlan?.hasUsedTrial ? 0 : TRIAL_DAYS;
 
   const response = await admin.graphql(
     `#graphql
@@ -135,7 +147,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         name: `SuperCartD ${planData.name}`,
         returnUrl,
         test: isTest,
-        trialDays: TRIAL_DAYS,
+        trialDays,
         lineItems: [
           {
             plan: {
@@ -178,6 +190,7 @@ export default function Billing() {
     month,
     isOverLimit,
     onTrial,
+    hasUsedTrial,
     trialEndsAt,
     justConfirmed,
     trialDays,
@@ -299,9 +312,11 @@ export default function Billing() {
       </s-section>
 
       <s-section heading="Plans">
-        <s-text>
-          All paid plans include a {trialDays}-day free trial.
-        </s-text>
+        {!hasUsedTrial && (
+          <s-text>
+            All paid plans include a {trialDays}-day free trial.
+          </s-text>
+        )}
 
         <s-grid grid-template-columns="1fr 1fr 1fr" gap="base">
           {(

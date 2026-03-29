@@ -46,21 +46,47 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       await prisma.shopPlan.upsert({
         where: { shop },
-        update: { plan, subscriptionGid },
-        create: { shop, plan, subscriptionGid },
+        update: {
+          plan,
+          subscriptionGid,
+          hasUsedTrial: true,
+          isFrozen: false,
+        },
+        create: {
+          shop,
+          plan,
+          subscriptionGid,
+          hasUsedTrial: true,
+          isFrozen: false,
+        },
       });
 
       console.log(`[app_subscriptions/update] ${shop} → plan=${plan} (ACTIVE)`);
+    } else if (status === "FROZEN") {
+      // FROZEN is non-terminal — subscription reactivates when payments resume.
+      // Keep the plan and subscriptionGid intact, just flag as frozen.
+      await prisma.shopPlan.upsert({
+        where: { shop },
+        update: { isFrozen: true },
+        create: { shop, plan: "starter", isFrozen: true },
+      });
+
+      console.log(
+        `[app_subscriptions/update] ${shop} → FROZEN (plan kept, features disabled)`,
+      );
     } else if (
       status === "CANCELLED" ||
       status === "DECLINED" ||
-      status === "EXPIRED" ||
-      status === "FROZEN"
+      status === "EXPIRED"
     ) {
-      // Subscription is no longer active — revert to starter
+      // Terminal states — revert to starter
       await prisma.shopPlan.upsert({
         where: { shop },
-        update: { plan: "starter", subscriptionGid: null },
+        update: {
+          plan: "starter",
+          subscriptionGid: null,
+          isFrozen: false,
+        },
         create: { shop, plan: "starter", subscriptionGid: null },
       });
 

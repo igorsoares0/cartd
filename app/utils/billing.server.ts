@@ -132,6 +132,8 @@ export async function syncShopPlan(
   subscriptionGid: string | null;
   trialEndsAt: Date | null;
   onTrial: boolean;
+  hasUsedTrial: boolean;
+  isFrozen: boolean;
 }> {
   const activeSub = await getActiveSubscription(admin);
   const plan = planFromSubscription(activeSub);
@@ -139,13 +141,37 @@ export async function syncShopPlan(
   const trialEndsAt = calcTrialEndsAt(activeSub);
   const onTrial = isTrialActive(trialEndsAt);
 
-  await prisma.shopPlan.upsert({
+  // If there's an active subscription, the merchant has used their trial
+  const hasUsedTrialUpdate = subscriptionGid ? true : undefined;
+
+  const record = await prisma.shopPlan.upsert({
     where: { shop },
-    update: { plan, subscriptionGid, trialEndsAt },
-    create: { shop, plan, subscriptionGid, trialEndsAt },
+    update: {
+      plan,
+      subscriptionGid,
+      trialEndsAt,
+      isFrozen: false, // if syncing with an active sub, not frozen
+      ...(hasUsedTrialUpdate !== undefined
+        ? { hasUsedTrial: hasUsedTrialUpdate }
+        : {}),
+    },
+    create: {
+      shop,
+      plan,
+      subscriptionGid,
+      trialEndsAt,
+      hasUsedTrial: !!subscriptionGid,
+    },
   });
 
-  return { plan, subscriptionGid, trialEndsAt, onTrial };
+  return {
+    plan,
+    subscriptionGid,
+    trialEndsAt,
+    onTrial,
+    hasUsedTrial: record.hasUsedTrial,
+    isFrozen: record.isFrozen,
+  };
 }
 
 /**
@@ -157,7 +183,7 @@ export async function getShopBilling(
   admin: { graphql: Function },
   shop: string,
 ) {
-  const { plan, subscriptionGid, trialEndsAt, onTrial } =
+  const { plan, subscriptionGid, trialEndsAt, onTrial, hasUsedTrial, isFrozen } =
     await syncShopPlan(admin, shop);
   const month = getCurrentMonth();
 
@@ -179,6 +205,8 @@ export async function getShopBilling(
     month,
     isOverLimit,
     onTrial,
+    hasUsedTrial,
+    isFrozen,
     trialEndsAt: trialEndsAt?.toISOString() ?? null,
   };
 }
@@ -197,10 +225,14 @@ export async function getShopPlanLocal(shop: string): Promise<PlanKey> {
  * Check if shop is over its plan limit using local DB only.
  * Used by storefront endpoints (app proxy) where we don't have admin API access.
  * During an active trial, always returns false (not over limit).
+ * When subscription is frozen, always returns true (features disabled).
  */
 export async function isShopOverLimitLocal(shop: string): Promise<boolean> {
   const record = await prisma.shopPlan.findUnique({ where: { shop } });
   if (!record) return false;
+
+  // Frozen subscription = features disabled until payments resume
+  if (record.isFrozen) return true;
 
   // During trial, never enforce limits
   if (record.trialEndsAt && new Date() < record.trialEndsAt) {

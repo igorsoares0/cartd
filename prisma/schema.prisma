@@ -50,6 +50,8 @@ model ShopPlan {
   plan            String    @default("starter") // starter | growth | pro
   subscriptionGid String?   // Shopify AppSubscription GID
   trialEndsAt     DateTime? // null = not on trial, date = trial active until
+  hasUsedTrial    Boolean   @default(false) // true after first subscription with trial
+  isFrozen        Boolean   @default(false) // true when subscription is FROZEN (non-terminal)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
@@ -61,6 +63,14 @@ model ShopUsage {
   orderCount Int    @default(0)
 
   @@unique([shop, month])
+}
+
+model ProcessedOrder {
+  id      String @id @default(cuid())
+  shop    String
+  orderId String // Shopify order GID or numeric ID from webhook payload
+
+  @@unique([shop, orderId])
 }
 
 model AnalyticsEvent {
