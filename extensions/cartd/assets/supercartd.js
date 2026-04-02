@@ -224,17 +224,18 @@
       if (e.key === "Escape" && isOpen) closeDrawer();
     });
 
-    var checkoutBtn = qs(".scd-checkout-btn");
-    if (checkoutBtn) {
-      checkoutBtn.addEventListener("click", function () {
-        if (cart) {
-          trackEvent("checkout_click", {
-            cartTotal: (cart.total_price / 100).toFixed(2),
-            itemCount: cart.item_count,
-          });
-        }
-      });
-    }
+    // Checkout tracking via document-level delegation (capture phase)
+    // to guarantee it fires regardless of other scripts or DOM changes
+    document.addEventListener("click", function (e) {
+      var btn = e.target.closest && e.target.closest(".scd-checkout-btn");
+      if (!btn) return;
+      if (cart) {
+        trackEvent("checkout_click", {
+          cartTotal: (cart.total_price / 100).toFixed(2),
+          itemCount: cart.item_count,
+        });
+      }
+    }, true);
   }
 
   // --- ADD-TO-CART INTERCEPTION (set up BEFORE config loads) ---

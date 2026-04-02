@@ -1,7 +1,6 @@
 import type { ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-import { isShopOverLimitLocal } from "../utils/billing.server";
 
 const VALID_EVENTS = [
   "drawer_open",
@@ -47,14 +46,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     const shop = session.shop;
-
-    // Reject analytics tracking for shops over their plan limit
-    if (await isShopOverLimitLocal(shop)) {
-      return new Response(
-        JSON.stringify({ error: "Plan limit exceeded" }),
-        { status: 402, headers: { "Content-Type": "application/json" } },
-      );
-    }
 
     if (!checkRateLimit(shop)) {
       return new Response(
