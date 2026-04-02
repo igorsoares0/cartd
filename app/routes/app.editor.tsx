@@ -910,7 +910,7 @@ function RewardsSection({
                 }
               />
 
-              <s-stack direction="inline" gap="base">
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", minWidth: 0 }}>
                 <s-color-field
                   label="Background"
                   name={`reward-${reward.id}-bg`}
@@ -950,7 +950,7 @@ function RewardsSection({
                     })
                   }
                 />
-              </s-stack>
+              </div>
             </s-stack>
           </s-box>
         ))}
@@ -1247,7 +1247,7 @@ function UpsellsSection({
                 />
               )}
 
-              <s-stack direction="inline" gap="base">
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", minWidth: 0 }}>
                 <s-color-field
                   label="Button Color"
                   name={`upsell-${upsell.id}-btnColor`}
@@ -1274,9 +1274,9 @@ function UpsellsSection({
                     })
                   }
                 />
-              </s-stack>
+              </div>
 
-              <s-stack direction="inline" gap="base">
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", minWidth: 0 }}>
                 <s-color-field
                   label="Card Background"
                   name={`upsell-${upsell.id}-cardBg`}
@@ -1303,9 +1303,9 @@ function UpsellsSection({
                     })
                   }
                 />
-              </s-stack>
+              </div>
 
-              <s-stack direction="inline" gap="base">
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", minWidth: 0 }}>
                 <s-number-field
                   label="Button Radius (px)"
                   name={`upsell-${upsell.id}-btnRadius`}
@@ -1338,7 +1338,7 @@ function UpsellsSection({
                     })
                   }
                 />
-              </s-stack>
+              </div>
             </s-stack>
           </s-box>
         ))}
@@ -1549,7 +1549,7 @@ export default function Editor() {
           alignItems: "flex-start",
           minHeight: "calc(100dvh - 120px)",
           paddingRight: previewDockWidth,
-          marginRight: "calc(50% - 50vw)",
+          overflowX: "hidden",
         }}
       >
         {/* Sidebar area - use page scroll (native scrollbar on window right side) */}
@@ -1569,24 +1569,28 @@ export default function Editor() {
               maxWidth: editorPanelWidth,
               flexShrink: 0,
               paddingBottom: "16px",
+              overflow: "hidden",
             }}
           >
-            <div style={{ display: "grid", gap: "14px" }}>
-              <s-section heading="Cart Drawer">
-                <s-switch
-                  label="Enable Cart Drawer"
-                  checked={state.config.enabled || undefined}
-                  onChange={() => dispatch({ type: "TOGGLE_ENABLED" })}
-                />
-                {!state.config.enabled && (
-                  <p style={{ fontSize: "13px", color: "#666", margin: "8px 0 0" }}>
-                    The cart drawer will not appear on your storefront.
-                  </p>
-                )}
-              </s-section>
+            <div style={{ display: "grid", gap: "14px", minWidth: 0, width: "100%" }}>
+              <div style={{ minWidth: 0, overflow: "hidden" }}>
+                <s-section heading="Cart Drawer">
+                  <s-switch
+                    label="Enable Cart Drawer"
+                    checked={state.config.enabled || undefined}
+                    onChange={() => dispatch({ type: "TOGGLE_ENABLED" })}
+                  />
+                  {!state.config.enabled && (
+                    <p style={{ fontSize: "13px", color: "#666", margin: "8px 0 0" }}>
+                      The cart drawer will not appear on your storefront.
+                    </p>
+                  )}
+                </s-section>
+              </div>
 
               <div style={!state.config.enabled ? { opacity: 0.5, pointerEvents: "none" } : undefined}>
-                <s-section heading="Sections">
+                <div style={{ minWidth: 0, overflow: "hidden" }}>
+                  <s-section heading="Sections">
                   <s-stack direction="block" gap="base">
                     {sections.map((section) => {
                       const isSelected = state.selectedSection === section.id;
@@ -1632,8 +1636,11 @@ export default function Editor() {
                                 borderRadius: "10px",
                                 border: "1px solid #e1e3e5",
                                 background: "#fafbfb",
+                                overflow: "hidden",
+                                minWidth: 0,
                               }}
                             >
+                              <div style={{ minWidth: 0 }}>
                               {section.id === "header" && (
                                 <HeaderSection
                                   config={state.config}
@@ -1664,6 +1671,7 @@ export default function Editor() {
                                   dispatch={dispatch}
                                 />
                               )}
+                              </div>
                             </div>
                           )}
                         </div>
@@ -1671,6 +1679,7 @@ export default function Editor() {
                     })}
                   </s-stack>
                 </s-section>
+                </div>
               </div>
             </div>
           </div>
