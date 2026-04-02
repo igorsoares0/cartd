@@ -1589,7 +1589,7 @@ export default function Editor() {
               </div>
 
               <div style={!state.config.enabled ? { opacity: 0.5, pointerEvents: "none" } : undefined}>
-                <div style={{ minWidth: 0, overflow: "hidden" }}>
+                <div style={{ minWidth: 0 }}>
                   <s-section heading="Sections">
                   <s-stack direction="block" gap="base">
                     {sections.map((section) => {
