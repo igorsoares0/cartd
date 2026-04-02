@@ -159,31 +159,21 @@ fn cart_lines_discounts_generate_run(
         }
     }
 
-    let mut operations: Vec<schema::CartOperation> = vec![];
+    // Shopify allows at most one productDiscountsAdd operation,
+    // so merge all candidates into a single operation.
+    let mut all_candidates = reward_candidates;
+    all_candidates.extend(upsell_candidates);
 
-    // Reward discounts: use Maximum so only the best reward applies
-    if !reward_candidates.is_empty() {
-        operations.push(schema::CartOperation::ProductDiscountsAdd(
-            schema::ProductDiscountsAddOperation {
-                selection_strategy: schema::ProductDiscountSelectionStrategy::Maximum,
-                candidates: reward_candidates,
-            },
-        ));
-    }
-
-    // Upsell discounts: use All so every upsell product gets its discount
-    if !upsell_candidates.is_empty() {
-        operations.push(schema::CartOperation::ProductDiscountsAdd(
-            schema::ProductDiscountsAddOperation {
-                selection_strategy: schema::ProductDiscountSelectionStrategy::All,
-                candidates: upsell_candidates,
-            },
-        ));
-    }
-
-    if operations.is_empty() {
+    if all_candidates.is_empty() {
         return Ok(empty);
     }
 
-    Ok(schema::CartLinesDiscountsGenerateRunResult { operations })
+    Ok(schema::CartLinesDiscountsGenerateRunResult {
+        operations: vec![schema::CartOperation::ProductDiscountsAdd(
+            schema::ProductDiscountsAddOperation {
+                selection_strategy: schema::ProductDiscountSelectionStrategy::All,
+                candidates: all_candidates,
+            },
+        )],
+    })
 }
