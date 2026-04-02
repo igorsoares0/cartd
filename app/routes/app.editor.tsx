@@ -1118,16 +1118,19 @@ function UpsellsSection({
 
               {/* Product image preview */}
               {upsell.imageUrl && (
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                   <img
                     src={upsell.imageUrl}
                     alt={upsell.title}
                     style={{
-                      width: "48px",
-                      height: "48px",
-                      objectFit: "cover",
-                      borderRadius: "6px",
+                      width: "80px",
+                      height: "auto",
+                      maxHeight: "100px",
+                      objectFit: "contain",
+                      borderRadius: "8px",
                       border: "1px solid #ddd",
+                      backgroundColor: "#f9f9f9",
+                      padding: "4px",
                     }}
                   />
                   <span style={{ fontSize: "12px", color: "#666" }}>Product image</span>
@@ -1939,8 +1942,9 @@ function CartDrawerPreview({ config }: { config: CartDrawerConfigJSON }) {
                   alt={upsell.title}
                   style={{
                     width: "48px",
-                    height: "48px",
-                    objectFit: "cover",
+                    height: "auto",
+                    maxHeight: "64px",
+                    objectFit: "contain",
                     borderRadius: "6px",
                     flexShrink: 0,
                   }}
