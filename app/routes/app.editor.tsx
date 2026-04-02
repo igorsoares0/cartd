@@ -1502,8 +1502,8 @@ export default function Editor() {
   const isBusy = state.isSaving || state.isPublishing;
   const { billing } = loaderData;
   const isOverLimit = billing.isOverLimit;
-  const previewDockWidth = "clamp(420px, 34vw, 560px)";
-  const editorPanelWidth = "clamp(400px, 30vw, 500px)";
+  const previewDockWidth = "clamp(380px, 30vw, 520px)";
+  const editorPanelWidth = "clamp(480px, 38vw, 620px)";
 
   return (
     <s-page heading="Cart Drawer Editor" inline-size="full">
@@ -1558,6 +1558,8 @@ export default function Editor() {
             flex: 1,
             paddingRight: "16px",
             paddingBottom: "24px",
+            display: "flex",
+            justifyContent: "center",
           }}
         >
           <div
