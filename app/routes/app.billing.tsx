@@ -31,9 +31,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   let justConfirmed = false;
 
   if (chargeId) {
-    // The merchant just returned from the Shopify billing screen.
-    // getShopBilling already synced the plan from the active subscription,
-    // so the plan is now correct in DB. We just flag it for the UI toast.
     justConfirmed =
       billing.plan !== "starter" || billing.subscriptionGid !== null;
   }
@@ -42,7 +39,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     currentPlan: billing.plan,
     hasActiveSubscription: billing.subscriptionGid !== null,
     orderCount: billing.orderCount,
-    orderLimit: billing.orderLimit, // null = unlimited, number = limit
+    orderLimit: billing.orderLimit,
     month: billing.month,
     isOverLimit: billing.isOverLimit,
     onTrial: billing.onTrial,
@@ -80,14 +77,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return { success: false, error: "Invalid plan" };
   }
 
-  // Guard: check if there's already an active subscription to prevent duplicates
   const existingSub = await getActiveSubscription(admin);
   if (existingSub) {
-    // Shopify replaces the existing subscription when a new one is created,
-    // but only after the merchant confirms. If the merchant spam-clicks,
-    // multiple confirmationUrls could be generated. We allow it because
-    // Shopify handles dedup on their side — only the last confirmed one wins.
-    // However, if they're already on the requested plan, block the request.
     const existingPrice =
       existingSub.lineItems?.[0]?.plan?.pricingDetails?.price?.amount;
     const requestedPrice = PLANS[plan].price;
@@ -105,7 +96,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const planData = PLANS[plan];
   const isTest = process.env.NODE_ENV !== "production";
 
-  // Validate returnUrl — SHOPIFY_APP_URL must be a full absolute URL
   const appUrl = process.env.SHOPIFY_APP_URL;
   if (!appUrl || !appUrl.startsWith("https://")) {
     return {
@@ -116,10 +106,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
   const returnUrl = `${appUrl}/app/billing`;
 
-  // Only offer trial on the merchant's first-ever subscription
   const shopPlan = await prisma.shopPlan.findUnique({ where: { shop } });
-  const trialDays =
-    shopPlan?.hasUsedTrial ? 0 : TRIAL_DAYS;
+  const trialDays = shopPlan?.hasUsedTrial ? 0 : TRIAL_DAYS;
 
   const response = await admin.graphql(
     `#graphql
@@ -172,13 +160,33 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   if (confirmationUrl) {
-    // DO NOT update plan in DB here.
-    // The plan will be synced from Shopify's actual subscription
-    // when the merchant returns via returnUrl (loader runs syncShopPlan).
     return { success: true, intent: "subscribe", confirmationUrl };
   }
 
   return { success: false, error: "Failed to create subscription" };
+};
+
+const PLAN_FEATURES: Record<string, string[]> = {
+  starter: [
+    "Up to 100 orders/month",
+    "Cart drawer customization",
+    "1 reward rule",
+    "1 upsell offer",
+  ],
+  growth: [
+    "Up to 500 orders/month",
+    "All Starter features",
+    "Up to 3 reward rules",
+    "Up to 3 upsell offers",
+    "Analytics dashboard",
+  ],
+  pro: [
+    "Unlimited orders",
+    "All Growth features",
+    "Up to 5 reward rules",
+    "Up to 5 upsell offers",
+    "Priority support",
+  ],
 };
 
 export default function Billing() {
@@ -192,7 +200,6 @@ export default function Billing() {
     onTrial,
     hasUsedTrial,
     trialEndsAt,
-    justConfirmed,
     trialDays,
     plans,
   } = useLoaderData<typeof loader>();
@@ -206,18 +213,14 @@ export default function Billing() {
       : Math.min((orderCount / orderLimit) * 100, 100);
 
   useEffect(() => {
-    if (justConfirmed) {
-      shopify.toast.show("Plan updated successfully!");
-    }
-  }, [justConfirmed, shopify]);
-
-  useEffect(() => {
     if (fetcher.data && fetcher.state === "idle") {
       const data = fetcher.data as Record<string, unknown>;
       if (data.confirmationUrl) {
         open(data.confirmationUrl as string, "_top");
       } else if (data.intent === "cancel" && data.success) {
-        shopify.toast.show("Subscription cancelled. You're now on the Starter plan.");
+        shopify.toast.show(
+          "Subscription cancelled. You're now on the Starter plan.",
+        );
       } else if (data.error) {
         shopify.toast.show(data.error as string);
       }
@@ -241,8 +244,8 @@ export default function Billing() {
     <s-page heading="Billing & Usage">
       {isOverLimit && (
         <s-banner heading="Plan limit reached" tone="warning" dismissible>
-          You've used all {orderLimit} orders for this month. Upgrade your plan
-          to continue using SuperCartD features.
+          You've used all {orderLimit} orders for this month. Upgrade your
+          plan to continue using SuperCartD features.
         </s-banner>
       )}
 
@@ -254,51 +257,89 @@ export default function Billing() {
         </s-banner>
       )}
 
+      {/* Current Usage — Metrics card pattern */}
       <s-section heading="Current Usage">
-        <s-stack direction="block" gap="base">
-          <s-stack direction="inline" gap="base">
-            <s-text type="strong">Plan:</s-text>
-            <s-badge tone="info">
-              {planData.name}{onTrial ? " (Trial)" : ""}
-            </s-badge>
-          </s-stack>
+        <s-grid
+          gridTemplateColumns="@container (inline-size <= 400px) 1fr, 1fr auto 1fr auto 1fr"
+          gap="small"
+        >
+          <s-box paddingBlock="small-400" paddingInline="small-100">
+            <s-grid gap="small-300">
+              <s-heading>Plan</s-heading>
+              <s-stack direction="inline" gap="small-200">
+                <s-badge tone={isOverLimit ? "critical" : "success"}>
+                  {planData.name}
+                  {onTrial ? " (Trial)" : ""}
+                </s-badge>
+              </s-stack>
+            </s-grid>
+          </s-box>
 
-          <s-stack direction="inline" gap="base">
-            <s-text type="strong">Period:</s-text>
-            <s-text>{month}</s-text>
-          </s-stack>
+          <s-divider direction="block" />
 
-          <s-stack direction="inline" gap="base">
-            <s-text type="strong">Orders:</s-text>
-            <s-text>
-              {orderCount} /{" "}
-              {orderLimit === null ? "Unlimited" : orderLimit}
-            </s-text>
-          </s-stack>
+          <s-box paddingBlock="small-400" paddingInline="small-100">
+            <s-grid gap="small-300">
+              <s-heading>Orders This Month</s-heading>
+              <s-text>
+                {orderCount} /{" "}
+                {orderLimit === null ? "Unlimited" : orderLimit}
+              </s-text>
+            </s-grid>
+          </s-box>
 
-          {orderLimit !== null && (
-            <div
-              style={{
-                height: "8px",
-                borderRadius: "4px",
-                backgroundColor: "#E0E0E0",
-                overflow: "hidden",
-                width: "100%",
-              }}
-            >
+          <s-divider direction="block" />
+
+          <s-box paddingBlock="small-400" paddingInline="small-100">
+            <s-grid gap="small-300">
+              <s-heading>Period</s-heading>
+              <s-text>{month}</s-text>
+            </s-grid>
+          </s-box>
+        </s-grid>
+
+        {/* Usage progress bar */}
+        {orderLimit !== null && (
+          <s-box paddingBlockStart="base">
+            <s-stack direction="block" gap="small-200">
+              <s-stack direction="inline" gap="base" align-items="center">
+                <s-icon
+                  type={isOverLimit ? "alert-circle" : "check-circle"}
+                  tone={isOverLimit ? "critical" : "success"}
+                />
+                <s-text>
+                  {isOverLimit
+                    ? "You've exceeded your plan limit"
+                    : `${Math.round(usagePercent)}% of plan limit used`}
+                </s-text>
+              </s-stack>
               <div
                 style={{
-                  height: "100%",
-                  width: `${usagePercent}%`,
-                  backgroundColor: isOverLimit ? "#D82C0D" : "#2C6ECB",
-                  borderRadius: "4px",
-                  transition: "width 0.3s ease",
+                  height: "8px",
+                  borderRadius: "var(--p-border-radius-100, 4px)",
+                  backgroundColor:
+                    "var(--p-color-bg-surface-secondary, #E0E0E0)",
+                  overflow: "hidden",
+                  width: "100%",
                 }}
-              />
-            </div>
-          )}
+              >
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${usagePercent}%`,
+                    backgroundColor: isOverLimit
+                      ? "var(--p-color-bg-fill-critical, #D82C0D)"
+                      : "var(--p-color-bg-fill-success, #008060)",
+                    borderRadius: "var(--p-border-radius-100, 4px)",
+                    transition: "width 0.3s ease",
+                  }}
+                />
+              </div>
+            </s-stack>
+          </s-box>
+        )}
 
-          {hasActiveSubscription && currentPlan !== "starter" && (
+        {hasActiveSubscription && currentPlan !== "starter" && (
+          <s-box paddingBlockStart="base">
             <s-button
               variant="tertiary"
               tone="critical"
@@ -307,54 +348,112 @@ export default function Billing() {
             >
               Cancel subscription
             </s-button>
-          )}
-        </s-stack>
+          </s-box>
+        )}
       </s-section>
 
-      <s-section heading="Plans">
+      {/* Plans */}
+      <s-section heading="Choose Your Plan">
         {!hasUsedTrial && (
-          <s-text>
-            All paid plans include a {trialDays}-day free trial.
-          </s-text>
+          <s-banner tone="info" dismissible>
+            All paid plans include a {trialDays}-day free trial. No charge
+            until the trial ends.
+          </s-banner>
         )}
 
-        <s-grid grid-template-columns="1fr 1fr 1fr" gap="base">
+        <s-grid
+          gridTemplateColumns="@container (inline-size <= 600px) 1fr, 1fr 1fr 1fr"
+          gap="base"
+        >
           {(
             Object.entries(plans) as [PlanKey, (typeof plans)[PlanKey]][]
-          ).map(([key, plan]) => (
-            <s-box
-              key={key}
-              padding="base"
-              borderWidth="base"
-              borderRadius="base"
-              {...(key === currentPlan ? { background: "subdued" } : {})}
-            >
-              <s-stack direction="block" gap="base">
-                <s-heading>{plan.name}</s-heading>
-                <s-text type="strong">${plan.price}/mo</s-text>
-                <s-text>
-                  {plan.orders === null
-                    ? "Unlimited orders"
-                    : `Up to ${plan.orders} orders/month`}
-                </s-text>
-                {key === currentPlan ? (
-                  <s-badge tone="success">Current Plan</s-badge>
-                ) : (
-                  <s-button
-                    variant="primary"
-                    onClick={() => handleSelectPlan(key)}
-                    {...(isBusy ? { disabled: true } : {})}
-                  >
-                    {plan.price > plans[currentPlan as PlanKey].price
-                      ? "Upgrade"
-                      : "Downgrade"}
-                  </s-button>
-                )}
-              </s-stack>
-            </s-box>
-          ))}
+          ).map(([key, plan]) => {
+            const isCurrent = key === currentPlan;
+            const isUpgrade = plan.price > plans[currentPlan as PlanKey].price;
+            const features = PLAN_FEATURES[key] || [];
+
+            return (
+              <s-box
+                key={key}
+                padding="base"
+                borderWidth="base"
+                borderRadius="base"
+                {...(isCurrent ? { background: "subdued" } : {})}
+              >
+                <s-stack direction="block" gap="base">
+                  <s-stack direction="inline" gap="small-200" align-items="center">
+                    <s-heading>{plan.name}</s-heading>
+                    {isCurrent && (
+                      <s-badge tone="success" icon="check-circle">
+                        Current
+                      </s-badge>
+                    )}
+                    {key === "growth" && !isCurrent && (
+                      <s-badge tone="info">Popular</s-badge>
+                    )}
+                  </s-stack>
+
+                  <s-stack direction="block" gap="small-200">
+                    <s-text type="strong">
+                      ${plan.price}
+                      <s-text color="subdued">/month</s-text>
+                    </s-text>
+                    <s-text color="subdued">
+                      {plan.orders === null
+                        ? "Unlimited orders"
+                        : `Up to ${plan.orders} orders/month`}
+                    </s-text>
+                  </s-stack>
+
+                  <s-divider />
+
+                  <s-stack direction="block" gap="small-200">
+                    {features.map((feature, i) => (
+                      <s-stack
+                        key={i}
+                        direction="inline"
+                        gap="small-200"
+                        align-items="center"
+                      >
+                        <s-icon type="check" tone="success" />
+                        <s-text>{feature}</s-text>
+                      </s-stack>
+                    ))}
+                  </s-stack>
+
+                  {isCurrent ? (
+                    <s-button variant="secondary" disabled>
+                      Current Plan
+                    </s-button>
+                  ) : (
+                    <s-button
+                      variant="primary"
+                      {...(key === "growth" && !isCurrent
+                        ? { tone: "auto" }
+                        : {})}
+                      onClick={() => handleSelectPlan(key)}
+                      {...(isBusy ? { disabled: true } : {})}
+                    >
+                      {isUpgrade ? "Upgrade" : "Downgrade"}
+                    </s-button>
+                  )}
+                </s-stack>
+              </s-box>
+            );
+          })}
         </s-grid>
       </s-section>
+
+      {/* Footer help */}
+      <s-stack alignItems="center">
+        <s-text>
+          Learn more about{" "}
+          <s-link href="https://supercartd.com/pricing" target="_blank">
+            pricing and plans
+          </s-link>
+          .
+        </s-text>
+      </s-stack>
     </s-page>
   );
 }

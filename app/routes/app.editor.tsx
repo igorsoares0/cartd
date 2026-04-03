@@ -776,21 +776,26 @@ function RewardsSection({
           >
             <s-stack direction="block" gap="base">
               <s-stack direction="inline" gap="base" align-items="center">
+                <s-icon type={reward.type === "free_shipping" ? "delivery" : "discount"} tone="info" />
                 <s-heading>
                   Reward {idx + 1} —{" "}
                   {reward.type === "free_shipping"
                     ? "Free Shipping"
                     : `${reward.discountValue ?? 10}% Off`}
                 </s-heading>
+                <div style={{ flex: 1 }} />
+                <s-badge tone={reward.enabled ? "success" : "warning"}>
+                  {reward.enabled ? "Active" : "Inactive"}
+                </s-badge>
                 <s-button
                   variant="tertiary"
                   tone="critical"
+                  icon="delete"
+                  accessibilityLabel={`Remove reward ${idx + 1}`}
                   onClick={() =>
                     dispatch({ type: "REMOVE_REWARD", id: reward.id })
                   }
-                >
-                  Remove
-                </s-button>
+                />
               </s-stack>
 
               <s-select
@@ -958,10 +963,14 @@ function RewardsSection({
         {rewards.length < 5 && (
           <s-button
             variant="secondary"
+            icon="plus"
             onClick={() => dispatch({ type: "ADD_REWARD" })}
           >
             Add Reward
           </s-button>
+        )}
+        {rewards.length >= 5 && (
+          <s-text color="subdued">Maximum of 5 rewards reached</s-text>
         )}
       </s-stack>
     </s-section>
@@ -1075,16 +1084,24 @@ function UpsellsSection({
           >
             <s-stack direction="block" gap="base">
               <s-stack direction="inline" gap="base" align-items="center">
+                <s-icon type="product" tone="info" />
                 <s-heading>Upsell {idx + 1}</s-heading>
+                {upsell.title && upsell.productId && (
+                  <s-text color="subdued">— {upsell.title}</s-text>
+                )}
+                <div style={{ flex: 1 }} />
+                <s-badge tone={upsell.enabled ? "success" : "warning"}>
+                  {upsell.enabled ? "Active" : "Inactive"}
+                </s-badge>
                 <s-button
                   variant="tertiary"
                   tone="critical"
+                  icon="delete"
+                  accessibilityLabel={`Remove upsell ${idx + 1}`}
                   onClick={() =>
                     dispatch({ type: "REMOVE_UPSELL", id: upsell.id })
                   }
-                >
-                  Remove
-                </s-button>
+                />
               </s-stack>
 
               <s-switch
@@ -1110,6 +1127,7 @@ function UpsellsSection({
                 />
                 <s-button
                   variant="secondary"
+                  icon="search"
                   onClick={() => handlePickProduct(upsell.id)}
                 >
                   Pick Product
@@ -1170,6 +1188,7 @@ function UpsellsSection({
                   </s-text>
                   <s-button
                     variant="tertiary"
+                    icon="plus"
                     onClick={() =>
                       handlePickExclusions(
                         upsell.id,
@@ -1349,10 +1368,14 @@ function UpsellsSection({
         {upsells.length < 5 && (
           <s-button
             variant="secondary"
+            icon="plus"
             onClick={() => dispatch({ type: "ADD_UPSELL" })}
           >
             Add Upsell
           </s-button>
+        )}
+        {upsells.length >= 5 && (
+          <s-text color="subdued">Maximum of 5 upsells reached</s-text>
         )}
       </s-stack>
     </s-section>
@@ -1491,15 +1514,12 @@ export default function Editor() {
     fetcher.submit({ intent: "discard" }, { method: "POST" });
   }, [fetcher]);
 
-  const sections: {
-    id: EditorState["selectedSection"];
-    label: string;
-  }[] = [
-    { id: "header", label: "Header" },
-    { id: "announcement", label: "Announcement Bar" },
-    { id: "rewards", label: "Rewards" },
-    { id: "upsells", label: "Upsells" },
-    { id: "footer", label: "Footer" },
+  const sections = [
+    { id: "header" as const, label: "Header", icon: "text-title" as const, description: "Title, colors, and fonts" },
+    { id: "announcement" as const, label: "Announcement Bar", icon: "alert-bubble" as const, description: "Promotional messages" },
+    { id: "rewards" as const, label: "Rewards", icon: "reward" as const, description: "Free shipping and discount goals" },
+    { id: "upsells" as const, label: "Upsells", icon: "product" as const, description: "Product recommendations" },
+    { id: "footer" as const, label: "Footer", icon: "payment" as const, description: "Checkout button and trust badges" },
   ];
 
   const isBusy = state.isSaving || state.isPublishing;
@@ -1521,6 +1541,7 @@ export default function Editor() {
       <s-button
         slot="primary-action"
         variant="primary"
+        icon="upload"
         onClick={handlePublish}
         {...(state.isPublishing ? { loading: true } : {})}
         {...(isBusy || isOverLimit ? { disabled: true } : {})}
@@ -1530,6 +1551,7 @@ export default function Editor() {
 
       <s-button-group slot="secondary-action">
         <s-button
+          icon="save"
           onClick={handleSave}
           {...(state.isSaving ? { loading: true } : {})}
           {...(!state.isDirty || isBusy ? { disabled: true } : {})}
@@ -1538,10 +1560,11 @@ export default function Editor() {
         </s-button>
         <s-button
           variant="tertiary"
+          icon="undo"
           onClick={handleDiscard}
           {...(!state.isDirty || isBusy ? { disabled: true } : {})}
         >
-          Discard Changes
+          Discard
         </s-button>
       </s-button-group>
 
@@ -1621,11 +1644,17 @@ export default function Editor() {
                                   display: "flex",
                                   alignItems: "center",
                                   justifyContent: "space-between",
-                                  gap: "8px",
+                                  gap: "10px",
                                 }}
                               >
-                                <s-text {...(isSelected ? { type: "strong" } : {})}>{section.label}</s-text>
-                                <span style={{ fontSize: "12px", color: "#6d7175" }}>{isSelected ? "▼" : "▶"}</span>
+                                <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, minWidth: 0 }}>
+                                  <s-icon type={section.icon} tone="auto" />
+                                  <div>
+                                    <s-text {...(isSelected ? { type: "strong" } : {})}>{section.label}</s-text>
+                                    <div><s-text color="subdued">{section.description}</s-text></div>
+                                  </div>
+                                </div>
+                                <s-icon type={isSelected ? "chevron-down" : "chevron-right"} color="subdued" />
                               </div>
                             </s-clickable>
                           </div>

@@ -51,13 +51,25 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Daily breakdown for chart
   const dailyMap = new Map<
     string,
-    { opens: number; clicks: number; adds: number; checkouts: number; revenue: number }
+    {
+      opens: number;
+      clicks: number;
+      adds: number;
+      checkouts: number;
+      revenue: number;
+    }
   >();
 
   for (const e of events) {
     const day = e.createdAt.toISOString().slice(0, 10);
     if (!dailyMap.has(day)) {
-      dailyMap.set(day, { opens: 0, clicks: 0, adds: 0, checkouts: 0, revenue: 0 });
+      dailyMap.set(day, {
+        opens: 0,
+        clicks: 0,
+        adds: 0,
+        checkouts: 0,
+        revenue: 0,
+      });
     }
     const d = dailyMap.get(day)!;
 
@@ -93,7 +105,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   // Build daily data array
-  const days = range === "24h" ? 1 : range === "7d" ? 7 : range === "30d" ? 30 : 90;
+  const days =
+    range === "24h" ? 1 : range === "7d" ? 7 : range === "30d" ? 30 : 90;
   const chartDays = range === "all" ? Math.max(dailyMap.size, 30) : days;
 
   const dailyData: Array<{
@@ -120,11 +133,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   }
 
   const upsellCTR =
-    drawerOpens > 0 ? ((upsellClicks / drawerOpens) * 100).toFixed(1) : "0.0";
+    drawerOpens > 0
+      ? ((upsellClicks / drawerOpens) * 100).toFixed(1)
+      : "0.0";
   const upsellAddRate =
-    upsellClicks > 0 ? ((upsellAdds / upsellClicks) * 100).toFixed(1) : "0.0";
+    upsellClicks > 0
+      ? ((upsellAdds / upsellClicks) * 100).toFixed(1)
+      : "0.0";
   const checkoutRate =
-    drawerOpens > 0 ? ((checkoutClicks / drawerOpens) * 100).toFixed(1) : "0.0";
+    drawerOpens > 0
+      ? ((checkoutClicks / drawerOpens) * 100).toFixed(1)
+      : "0.0";
 
   const rangeLabel =
     range === "24h"
@@ -153,71 +172,116 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function AnalyticsPage() {
-  const { range, rangeLabel, metrics, dailyData } = useLoaderData<typeof loader>();
+  const { range, rangeLabel, metrics, dailyData } =
+    useLoaderData<typeof loader>();
   const [, setSearchParams] = useSearchParams();
 
   const maxOpens = Math.max(...dailyData.map((d) => d.opens), 1);
   const ranges: { key: TimeRange; label: string }[] = [
-    { key: "24h", label: "24 hours" },
-    { key: "7d", label: "7 days" },
-    { key: "30d", label: "30 days" },
-    { key: "all", label: "All time" },
+    { key: "24h", label: "24h" },
+    { key: "7d", label: "7d" },
+    { key: "30d", label: "30d" },
+    { key: "all", label: "All" },
   ];
 
   return (
     <s-page heading="Analytics">
       <s-stack direction="block" gap="large">
-        {/* Overview header with time range tabs */}
-        <s-box padding="large" borderWidth="base" borderRadius="base" background="base">
-          <s-stack direction="block" gap="large">
-            <s-stack direction="inline" gap="base" align-items="center" wrap="wrap">
-              <s-text type="strong">Overview</s-text>
-              <div style={{ flex: 1 }} />
+        {/* Time range selector */}
+        <s-section>
+          <s-stack direction="inline" gap="base" align-items="center">
+            <s-icon type="clock" tone="info" />
+            <s-text type="strong">Time Range</s-text>
+            <s-button-group gap="base">
               {ranges.map((r) => (
                 <s-button
                   key={r.key}
                   variant={range === r.key ? "primary" : "tertiary"}
-                  size="small"
                   onClick={() => setSearchParams({ range: r.key })}
                 >
                   {r.label}
                 </s-button>
               ))}
-            </s-stack>
-
-            {/* KPI metric cards — CSS grid for horizontal layout */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "24px" }}>
-              <MetricCard
-                label="Upsell Revenue"
-                value={`$${metrics.upsellRevenue}`}
-                sub={rangeLabel}
-              />
-              <MetricCard
-                label="Checkout Rate"
-                value={`${metrics.checkoutRate}%`}
-                sub={`${metrics.checkoutClicks} checkouts`}
-              />
-              <MetricCard
-                label="Upsell Add Rate"
-                value={`${metrics.upsellAddRate}%`}
-                sub={`${metrics.upsellAdds} adds`}
-              />
-              <MetricCard
-                label="Drawer Opens"
-                value={metrics.drawerOpens.toLocaleString()}
-                sub={rangeLabel}
-              />
-            </div>
+            </s-button-group>
           </s-stack>
-        </s-box>
+        </s-section>
 
-        {/* Daily activity chart */}
-        <s-box padding="large" borderWidth="base" borderRadius="base" background="base">
+        {/* KPI Metrics — using Polaris metrics card pattern */}
+        <s-section padding="base">
+          <s-grid
+            gridTemplateColumns="@container (inline-size <= 500px) 1fr 1fr, 1fr auto 1fr auto 1fr auto 1fr"
+            gap="small"
+          >
+            <s-box paddingBlock="small-400" paddingInline="small-100">
+              <s-grid gap="small-300">
+                <s-stack direction="inline" gap="small-200" align-items="center">
+                  <s-icon type="money" tone="success" />
+                  <s-heading>Upsell Revenue</s-heading>
+                </s-stack>
+                <s-text type="strong">${metrics.upsellRevenue}</s-text>
+                <s-text color="subdued">{rangeLabel}</s-text>
+              </s-grid>
+            </s-box>
+
+            <s-divider direction="block" />
+
+            <s-box paddingBlock="small-400" paddingInline="small-100">
+              <s-grid gap="small-300">
+                <s-stack direction="inline" gap="small-200" align-items="center">
+                  <s-icon type="cart" tone="info" />
+                  <s-heading>Checkout Rate</s-heading>
+                </s-stack>
+                <s-stack direction="inline" gap="small-200">
+                  <s-text type="strong">{metrics.checkoutRate}%</s-text>
+                  <s-badge tone="info">
+                    {metrics.checkoutClicks} checkouts
+                  </s-badge>
+                </s-stack>
+                <s-text color="subdued">{rangeLabel}</s-text>
+              </s-grid>
+            </s-box>
+
+            <s-divider direction="block" />
+
+            <s-box paddingBlock="small-400" paddingInline="small-100">
+              <s-grid gap="small-300">
+                <s-stack direction="inline" gap="small-200" align-items="center">
+                  <s-icon type="product" tone="success" />
+                  <s-heading>Upsell Add Rate</s-heading>
+                </s-stack>
+                <s-stack direction="inline" gap="small-200">
+                  <s-text type="strong">{metrics.upsellAddRate}%</s-text>
+                  <s-badge tone="success">
+                    {metrics.upsellAdds} adds
+                  </s-badge>
+                </s-stack>
+                <s-text color="subdued">{rangeLabel}</s-text>
+              </s-grid>
+            </s-box>
+
+            <s-divider direction="block" />
+
+            <s-box paddingBlock="small-400" paddingInline="small-100">
+              <s-grid gap="small-300">
+                <s-stack direction="inline" gap="small-200" align-items="center">
+                  <s-icon type="view" tone="info" />
+                  <s-heading>Drawer Opens</s-heading>
+                </s-stack>
+                <s-text type="strong">
+                  {metrics.drawerOpens.toLocaleString()}
+                </s-text>
+                <s-text color="subdued">{rangeLabel}</s-text>
+              </s-grid>
+            </s-box>
+          </s-grid>
+        </s-section>
+
+        {/* Daily Activity Chart */}
+        <s-section heading="Daily Activity">
           <s-stack direction="block" gap="base">
             <s-stack direction="inline" gap="base" align-items="center">
-              <s-text type="strong">Daily Activity</s-text>
-              <div style={{ flex: 1 }} />
-              <s-text>Drawer opens over time</s-text>
+              <s-icon type="chart-histogram-flat" tone="info" />
+              <s-text color="subdued">Drawer opens over time</s-text>
             </s-stack>
             <div
               style={{
@@ -233,11 +297,14 @@ export default function AnalyticsPage() {
                 return (
                   <div
                     key={d.date}
-                    title={`${d.date}\n${d.opens} opens · ${d.adds} upsell adds · ${d.checkouts} checkouts`}
+                    title={`${d.date}\n${d.opens} opens\n${d.adds} upsell adds\n${d.checkouts} checkouts`}
                     style={{
                       flex: 1,
                       height: `${height}px`,
-                      backgroundColor: d.opens > 0 ? "#7c3aed" : "#ebebeb",
+                      backgroundColor:
+                        d.opens > 0
+                          ? "var(--p-color-bg-fill-info, #2C6ECB)"
+                          : "var(--p-color-bg-surface-secondary, #ebebeb)",
                       borderRadius: "3px 3px 0 0",
                       minWidth: "3px",
                       cursor: "default",
@@ -248,117 +315,120 @@ export default function AnalyticsPage() {
               })}
             </div>
             <s-stack direction="inline" gap="base">
-              <s-text>{dailyData[0]?.date ?? ""}</s-text>
+              <s-text color="subdued">{dailyData[0]?.date ?? ""}</s-text>
               <div style={{ flex: 1 }} />
-              <s-text>{dailyData[dailyData.length - 1]?.date ?? ""}</s-text>
+              <s-text color="subdued">
+                {dailyData[dailyData.length - 1]?.date ?? ""}
+              </s-text>
             </s-stack>
           </s-stack>
-        </s-box>
+        </s-section>
 
-        {/* Conversion funnel */}
-        <s-box padding="large" borderWidth="base" borderRadius="base" background="base">
+        {/* Conversion Funnel */}
+        <s-section heading="Conversion Funnel">
           <s-stack direction="block" gap="base">
-            <s-text type="strong">Conversion Funnel</s-text>
-            <s-stack direction="block" gap="base">
-              <FunnelRow
-                label="Drawer Opens"
-                value={metrics.drawerOpens}
-                max={metrics.drawerOpens}
-                color="#7c3aed"
-              />
-              <FunnelRow
-                label="Upsell Clicks"
-                value={metrics.upsellClicks}
-                max={metrics.drawerOpens}
-                color="#8b5cf6"
-                rate={metrics.upsellCTR}
-              />
-              <FunnelRow
-                label="Added to Cart"
-                value={metrics.upsellAdds}
-                max={metrics.drawerOpens}
-                color="#a78bfa"
-                rate={metrics.upsellAddRate}
-              />
-              <FunnelRow
-                label="Checkout"
-                value={metrics.checkoutClicks}
-                max={metrics.drawerOpens}
-                color="#c4b5fd"
-                rate={metrics.checkoutRate}
-              />
-            </s-stack>
+            <FunnelRow
+              icon="view"
+              label="Drawer Opens"
+              value={metrics.drawerOpens}
+              max={metrics.drawerOpens}
+              tone="info"
+            />
+            <FunnelRow
+              icon="cursor"
+              label="Upsell Clicks"
+              value={metrics.upsellClicks}
+              max={metrics.drawerOpens}
+              rate={metrics.upsellCTR}
+              tone="info"
+            />
+            <FunnelRow
+              icon="cart"
+              label="Added to Cart"
+              value={metrics.upsellAdds}
+              max={metrics.drawerOpens}
+              rate={metrics.upsellAddRate}
+              tone="success"
+            />
+            <FunnelRow
+              icon="payment"
+              label="Checkout"
+              value={metrics.checkoutClicks}
+              max={metrics.drawerOpens}
+              rate={metrics.checkoutRate}
+              tone="success"
+            />
           </s-stack>
-        </s-box>
+        </s-section>
+
+        {/* Footer help */}
+        <s-stack alignItems="center">
+          <s-text>
+            Learn more about{" "}
+            <s-link href="https://supercartd.com/docs/analytics" target="_blank">
+              understanding your analytics
+            </s-link>
+            .
+          </s-text>
+        </s-stack>
       </s-stack>
     </s-page>
   );
 }
 
-function MetricCard({
-  label,
-  value,
-  sub,
-}: {
-  label: string;
-  value: string;
-  sub: string;
-}) {
-  return (
-    <div>
-      <s-text>{label}</s-text>
-      <div style={{ margin: "4px 0" }}>
-        <s-heading>{value}</s-heading>
-      </div>
-      <s-text>{sub}</s-text>
-    </div>
-  );
-}
-
 function FunnelRow({
+  icon,
   label,
   value,
   max,
-  color,
   rate,
+  tone,
 }: {
+  icon: "view" | "cursor" | "cart" | "payment";
   label: string;
   value: number;
   max: number;
-  color: string;
   rate?: string;
+  tone: "info" | "success";
 }) {
   const pct = max > 0 ? Math.max((value / max) * 100, 1) : 0;
+
   return (
-    <div>
-      <s-stack direction="inline" gap="base" align-items="center">
-        <s-text>{label}</s-text>
-        <div style={{ flex: 1 }} />
-        <s-text>
-          {value.toLocaleString()}
-          {rate ? ` (${rate}%)` : ""}
-        </s-text>
-      </s-stack>
-      <div
-        style={{
-          height: "8px",
-          backgroundColor: "var(--p-color-bg-surface-secondary, #f3f3f3)",
-          borderRadius: "4px",
-          overflow: "hidden",
-          marginTop: "4px",
-        }}
-      >
+    <s-box padding="small-200">
+      <s-stack direction="block" gap="small-200">
+        <s-stack direction="inline" gap="base" align-items="center">
+          <s-icon type={icon} tone={tone} />
+          <s-text type="strong">{label}</s-text>
+          <div style={{ flex: 1 }} />
+          <s-text>
+            {value.toLocaleString()}
+            {rate ? ` (${rate}%)` : ""}
+          </s-text>
+        </s-stack>
         <div
           style={{
-            width: `${pct}%`,
-            height: "100%",
-            backgroundColor: color,
-            borderRadius: "4px",
-            transition: "width 0.3s ease",
+            height: "8px",
+            backgroundColor:
+              "var(--p-color-bg-surface-secondary, #f3f3f3)",
+            borderRadius: "var(--p-border-radius-100, 4px)",
+            overflow: "hidden",
           }}
-        />
-      </div>
-    </div>
+        >
+          <div
+            style={{
+              width: `${pct}%`,
+              height: "100%",
+              backgroundColor:
+                tone === "success"
+                  ? "var(--p-color-bg-fill-success, #008060)"
+                  : "var(--p-color-bg-fill-info, #2C6ECB)",
+              borderRadius: "var(--p-border-radius-100, 4px)",
+              transition: "width 0.3s ease",
+            }}
+          />
+        </div>
+      </s-stack>
+    </s-box>
   );
 }
 
