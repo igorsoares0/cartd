@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "ShopPlan" ADD COLUMN "hasUsedTrial" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "ShopPlan" ADD COLUMN "isFrozen" BOOLEAN NOT NULL DEFAULT false;
