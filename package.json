@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "build": "prisma migrate deploy && react-router build",
-    "build:prod": "react-router build",
+    "build:prod": "prisma migrate deploy && react-router build",
     "dev": "npm run dev:local",
     "dev:local": "npm run shopify:config:dev && shopify app dev",
     "config:link": "shopify app config link",
