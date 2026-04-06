@@ -2,7 +2,7 @@
   "name": "cartd",
   "private": true,
   "scripts": {
-    "build": "react-router build",
+    "build": "prisma migrate deploy && react-router build",
     "build:prod": "react-router build",
     "dev": "npm run dev:local",
     "dev:local": "npm run shopify:config:dev && shopify app dev",
