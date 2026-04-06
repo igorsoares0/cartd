@@ -1,15 +1,17 @@
 import prisma from "../db.server";
 
 export const PLANS = {
-  starter: { name: "Starter", orders: 100, price: 9.99 },
+  starter: { name: "Starter", orders: 100, price: 0 }, // Free tier — no Shopify subscription
   growth: { name: "Growth", orders: 500, price: 29.99 },
   pro: { name: "Pro", orders: -1, price: 79.99 }, // -1 = unlimited (JSON-safe)
 } as const;
 
 export type PlanKey = keyof typeof PLANS;
 
+/** Plans that create a real Shopify subscription (excludes free starter) */
+export const PAID_PLAN_KEYS: PlanKey[] = ["growth", "pro"];
+
 const PLAN_BY_PRICE: Record<string, PlanKey> = {
-  "9.99": "starter",
   "29.99": "growth",
   "79.99": "pro",
 };
@@ -123,6 +125,11 @@ function isTrialActive(trialEndsAt: Date | null): boolean {
 /**
  * Sync the local ShopPlan record with Shopify's actual subscription state.
  * This is the single source of truth reconciliation.
+ *
+ * When activeSubscriptions is empty, checks if the local DB has isFrozen=true.
+ * If so, preserves the frozen state instead of reverting to starter — the
+ * FROZEN webhook already set the correct state and Shopify's activeSubscriptions
+ * excludes frozen subscriptions.
  */
 export async function syncShopPlan(
   admin: { graphql: Function },
@@ -136,41 +143,83 @@ export async function syncShopPlan(
   isFrozen: boolean;
 }> {
   const activeSub = await getActiveSubscription(admin);
-  const plan = planFromSubscription(activeSub);
-  const subscriptionGid = activeSub?.id ?? null;
-  const trialEndsAt = calcTrialEndsAt(activeSub);
-  const onTrial = isTrialActive(trialEndsAt);
 
-  // If there's an active subscription, the merchant has used their trial
-  const hasUsedTrialUpdate = subscriptionGid ? true : undefined;
+  // If there's an active subscription, sync normally
+  if (activeSub) {
+    const plan = planFromSubscription(activeSub);
+    const subscriptionGid = activeSub.id;
+    const trialEndsAt = calcTrialEndsAt(activeSub);
+    const onTrial = isTrialActive(trialEndsAt);
 
+    const record = await prisma.shopPlan.upsert({
+      where: { shop },
+      update: {
+        plan,
+        subscriptionGid,
+        trialEndsAt,
+        isFrozen: false,
+        hasUsedTrial: true,
+      },
+      create: {
+        shop,
+        plan,
+        subscriptionGid,
+        trialEndsAt,
+        hasUsedTrial: true,
+      },
+    });
+
+    return {
+      plan,
+      subscriptionGid,
+      trialEndsAt,
+      onTrial,
+      hasUsedTrial: record.hasUsedTrial,
+      isFrozen: false,
+    };
+  }
+
+  // No active subscription — check if the local DB has a frozen record.
+  // Shopify's activeSubscriptions excludes FROZEN subs, so we must not
+  // blindly overwrite a frozen state that the webhook correctly set.
+  const existing = await prisma.shopPlan.findUnique({ where: { shop } });
+
+  if (existing?.isFrozen) {
+    // Preserve the frozen state — the webhook already set the correct plan/gid
+    return {
+      plan: (existing.plan as PlanKey) ?? "starter",
+      subscriptionGid: existing.subscriptionGid,
+      trialEndsAt: existing.trialEndsAt,
+      onTrial: false,
+      hasUsedTrial: existing.hasUsedTrial,
+      isFrozen: true,
+    };
+  }
+
+  // Truly no subscription and not frozen — revert to free starter
   const record = await prisma.shopPlan.upsert({
     where: { shop },
     update: {
-      plan,
-      subscriptionGid,
-      trialEndsAt,
-      isFrozen: false, // if syncing with an active sub, not frozen
-      ...(hasUsedTrialUpdate !== undefined
-        ? { hasUsedTrial: hasUsedTrialUpdate }
-        : {}),
+      plan: "starter",
+      subscriptionGid: null,
+      trialEndsAt: null,
+      isFrozen: false,
     },
     create: {
       shop,
-      plan,
-      subscriptionGid,
-      trialEndsAt,
-      hasUsedTrial: !!subscriptionGid,
+      plan: "starter",
+      subscriptionGid: null,
+      hasUsedTrial: existing?.hasUsedTrial ?? false,
     },
   });
 
   return {
-    plan,
-    subscriptionGid,
-    trialEndsAt,
-    onTrial,
+    plan: "starter",
+    subscriptionGid: null,
+    trialEndsAt: null,
+    onTrial: false,
     hasUsedTrial: record.hasUsedTrial,
-    isFrozen: record.isFrozen,
+    isFrozen: false,
   };
 }
 
@@ -193,9 +242,9 @@ export async function getShopBilling(
 
   const orderCount = usage?.orderCount ?? 0;
   const orderLimit = getOrderLimit(plan);
-  // During trial, never enforce limits
+  // Frozen = features disabled; trial = never enforce; otherwise check limit
   const isOverLimit =
-    !onTrial && orderLimit !== null && orderCount >= orderLimit;
+    isFrozen || (!onTrial && orderLimit !== null && orderCount >= orderLimit);
 
   return {
     plan,

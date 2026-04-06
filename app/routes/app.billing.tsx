@@ -11,6 +11,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import prisma from "../db.server";
 import {
   PLANS,
+  PAID_PLAN_KEYS,
   TRIAL_DAYS,
   getShopBilling,
   getActiveSubscription,
@@ -42,13 +43,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     orderLimit: billing.orderLimit,
     month: billing.month,
     isOverLimit: billing.isOverLimit,
+    isFrozen: billing.isFrozen,
     onTrial: billing.onTrial,
     hasUsedTrial: billing.hasUsedTrial,
     trialEndsAt: billing.trialEndsAt,
     justConfirmed,
     trialDays: TRIAL_DAYS,
     plans: {
-      starter: { name: "Starter", orders: 100, price: 9.99 },
+      starter: { name: "Free", orders: 100, price: 0 },
       growth: { name: "Growth", orders: 500, price: 29.99 },
       pro: { name: "Pro", orders: null as number | null, price: 79.99 },
     },
@@ -75,6 +77,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   if (!PLANS[plan]) {
     return { success: false, error: "Invalid plan" };
+  }
+
+  if (!PAID_PLAN_KEYS.includes(plan)) {
+    return {
+      success: false,
+      error: "To switch to the Free plan, cancel your current subscription.",
+    };
   }
 
   const existingSub = await getActiveSubscription(admin);
@@ -175,7 +184,7 @@ const PLAN_FEATURES: Record<string, string[]> = {
   ],
   growth: [
     "Up to 500 orders/month",
-    "All Starter features",
+    "All Free plan features",
     "Up to 3 reward rules",
     "Up to 3 upsell offers",
     "Analytics dashboard",
@@ -197,6 +206,7 @@ export default function Billing() {
     orderLimit,
     month,
     isOverLimit,
+    isFrozen,
     onTrial,
     hasUsedTrial,
     trialEndsAt,
@@ -219,7 +229,7 @@ export default function Billing() {
         open(data.confirmationUrl as string, "_top");
       } else if (data.intent === "cancel" && data.success) {
         shopify.toast.show(
-          "Subscription cancelled. You're now on the Starter plan.",
+          "Subscription cancelled. You're now on the Free plan.",
         );
       } else if (data.error) {
         shopify.toast.show(data.error as string);
@@ -242,10 +252,22 @@ export default function Billing() {
 
   return (
     <s-page heading="Billing & Usage">
-      {isOverLimit && (
+      {isOverLimit && !isFrozen && (
         <s-banner heading="Plan limit reached" tone="warning" dismissible>
           You've used all {orderLimit} orders for this month. Upgrade your
           plan to continue using SuperCartD features.
+        </s-banner>
+      )}
+
+      {isFrozen && (
+        <s-banner heading="Subscription frozen" tone="critical">
+          Your subscription payment is overdue and has been frozen by Shopify.
+          SuperCartD features are disabled until your billing is resolved.
+          Please update your payment method in your{" "}
+          <s-link href="https://admin.shopify.com/store/settings/billing" target="_top">
+            Shopify billing settings
+          </s-link>
+          .
         </s-banner>
       )}
 
@@ -267,9 +289,9 @@ export default function Billing() {
             <s-grid gap="small-300">
               <s-heading>Plan</s-heading>
               <s-stack direction="inline" gap="small-200">
-                <s-badge tone={isOverLimit ? "critical" : "success"}>
+                <s-badge tone={isFrozen ? "critical" : isOverLimit ? "critical" : "success"}>
                   {planData.name}
-                  {onTrial ? " (Trial)" : ""}
+                  {isFrozen ? " (Frozen)" : onTrial ? " (Trial)" : ""}
                 </s-badge>
               </s-stack>
             </s-grid>
@@ -365,11 +387,79 @@ export default function Billing() {
           gridTemplateColumns="@container (inline-size <= 600px) 1fr, 1fr 1fr 1fr"
           gap="base"
         >
-          {(
-            Object.entries(plans) as [PlanKey, (typeof plans)[PlanKey]][]
-          ).map(([key, plan]) => {
+          {/* Free plan card */}
+          {(() => {
+            const starterPlan = plans.starter;
+            const isCurrentStarter = currentPlan === "starter";
+            const features = PLAN_FEATURES.starter || [];
+
+            return (
+              <s-box
+                padding="base"
+                borderWidth="base"
+                borderRadius="base"
+                {...(isCurrentStarter ? { background: "subdued" } : {})}
+              >
+                <s-stack direction="block" gap="base">
+                  <s-stack direction="inline" gap="small-200" align-items="center">
+                    <s-heading>{starterPlan.name}</s-heading>
+                    {isCurrentStarter && (
+                      <s-badge tone="success" icon="check-circle">
+                        Current
+                      </s-badge>
+                    )}
+                  </s-stack>
+
+                  <s-stack direction="block" gap="small-200">
+                    <s-text type="strong">
+                      Free
+                    </s-text>
+                    <s-text color="subdued">
+                      Up to {starterPlan.orders} orders/month
+                    </s-text>
+                  </s-stack>
+
+                  <s-divider />
+
+                  <s-stack direction="block" gap="small-200">
+                    {features.map((feature, i) => (
+                      <s-stack
+                        key={i}
+                        direction="inline"
+                        gap="small-200"
+                        align-items="center"
+                      >
+                        <s-icon type="check" tone="success" />
+                        <s-text>{feature}</s-text>
+                      </s-stack>
+                    ))}
+                  </s-stack>
+
+                  {isCurrentStarter ? (
+                    <s-button variant="secondary" disabled>
+                      Current Plan
+                    </s-button>
+                  ) : (
+                    <s-button
+                      variant="tertiary"
+                      tone="critical"
+                      onClick={handleCancel}
+                      {...(isBusy ? { disabled: true } : {})}
+                    >
+                      Downgrade to Free
+                    </s-button>
+                  )}
+                </s-stack>
+              </s-box>
+            );
+          })()}
+
+          {/* Paid plan cards (Growth, Pro) */}
+          {(["growth", "pro"] as const).map((key) => {
+            const plan = plans[key];
             const isCurrent = key === currentPlan;
-            const isUpgrade = plan.price > plans[currentPlan as PlanKey].price;
+            const isUpgrade =
+              plan.price > (plans[currentPlan as PlanKey]?.price ?? 0);
             const features = PLAN_FEATURES[key] || [];
 
             return (
@@ -434,7 +524,7 @@ export default function Billing() {
                       onClick={() => handleSelectPlan(key)}
                       {...(isBusy ? { disabled: true } : {})}
                     >
-                      {isUpgrade ? "Upgrade" : "Downgrade"}
+                      {isUpgrade ? "Upgrade" : "Switch Plan"}
                     </s-button>
                   )}
                 </s-stack>

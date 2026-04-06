@@ -75,7 +75,21 @@ npm run deploy:prod
 npm run deploy:prod
 ```
 
-## 4) Troca manual de config Shopify
+## 4) Prisma Migrations
+
+- **No dev**: sempre use `prisma migrate dev` para criar migrations. Nunca use `prisma db push` — ele sincroniza o banco sem gerar arquivo de migration, o que causa dessincronização com o banco de produção.
+- **No prod**: o `prisma migrate deploy` roda automaticamente no build da Vercel (configurado no script `build` do `package.json`). Ele aplica apenas migrations que existem como arquivos `.sql` em `prisma/migrations/`.
+
+Fluxo correto:
+
+```bash
+# 1. Altere o schema.prisma
+# 2. Gere a migration no dev
+npx prisma migrate dev --name nome_da_migration
+# 3. git push → Vercel aplica automaticamente no banco de prod
+```
+
+## 5) Troca manual de config Shopify
 
 ```bash
 npm run shopify:config:dev
