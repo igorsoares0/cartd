@@ -59,11 +59,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         break;
       case "upsell_add":
         upsellAdds++;
+        break;
+      case "upsell_purchase":
         if (e.metadata) {
           try {
             const m = JSON.parse(e.metadata);
-            const rev = m.revenue != null ? m.revenue : m.value;
-            if (rev != null) upsellRevenue += Number(rev) || 0;
+            if (m.revenue != null) upsellRevenue += Number(m.revenue) || 0;
           } catch {}
         }
         break;

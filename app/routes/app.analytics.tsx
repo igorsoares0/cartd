@@ -47,6 +47,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   let upsellAdds = 0;
   let checkoutClicks = 0;
   let upsellRevenue = 0;
+  let upsellPurchases = 0;
 
   // Daily breakdown for chart
   const dailyMap = new Map<
@@ -85,10 +86,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       case "upsell_add":
         upsellAdds++;
         d.adds++;
+        break;
+      case "upsell_purchase":
+        upsellPurchases++;
         if (e.metadata) {
           try {
             const m = JSON.parse(e.metadata);
-            const rev = m.revenue != null ? m.revenue : m.value;
+            const rev = m.revenue;
             if (rev != null) {
               const amount = Number(rev) || 0;
               upsellRevenue += amount;

@@ -620,12 +620,9 @@
         var vid = selectedVariantId.replace("gid://shopify/ProductVariant/", "");
         addToCart({ id: parseInt(vid, 10), quantity: 1 }).then(function (addedItem) {
           if (!addedItem) return;
-          // addedItem.price is in cents from Shopify AJAX API
-          var priceInDollars = (addedItem.price || 0) / 100;
           trackEvent("upsell_add", {
             productId: upsell.productId,
             variantId: selectedVariantId,
-            revenue: priceInDollars,
           });
         });
       });
