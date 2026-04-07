@@ -174,6 +174,9 @@
     btnEl.textContent = footer.checkoutButtonText;
     btnEl.style.backgroundColor = footer.checkoutButtonColor;
     btnEl.style.color = footer.checkoutButtonTextColor;
+    if (typeof footer.checkoutButtonRadius === "number") {
+      btnEl.style.borderRadius = footer.checkoutButtonRadius + "px";
+    }
 
     if (footer.showTrustBadges) {
       qs(".scd-trust-badges").style.display = "";

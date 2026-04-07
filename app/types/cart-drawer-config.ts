@@ -26,6 +26,7 @@ export type CartDrawerConfigJSON = {
     checkoutButtonText: string;
     checkoutButtonColor: string;
     checkoutButtonTextColor: string;
+    checkoutButtonRadius: number;
     showTrustBadges: boolean;
     trustBadgeUrls: string[];
   };
@@ -122,6 +123,7 @@ export function createDefaultConfig(): CartDrawerConfigJSON {
       checkoutButtonText: "Checkout",
       checkoutButtonColor: "#000000",
       checkoutButtonTextColor: "#FFFFFF",
+      checkoutButtonRadius: 8,
       showTrustBadges: true,
       trustBadgeUrls: [],
     },

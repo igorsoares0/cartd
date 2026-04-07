@@ -53,6 +53,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const config = JSON.parse(record.config) as CartDrawerConfigJSON;
   // Normalize: old configs without 'enabled' default to true
   if (config.enabled === undefined) config.enabled = true;
+  // Normalize: old configs without 'checkoutButtonRadius' default to 8
+  if (config.footer && config.footer.checkoutButtonRadius === undefined) {
+    config.footer.checkoutButtonRadius = 8;
+  }
 
   return {
     config,
@@ -383,7 +387,7 @@ type EditorAction =
       field: string;
       value: string | boolean;
     }
-  | { type: "UPDATE_FOOTER"; field: string; value: string | boolean }
+  | { type: "UPDATE_FOOTER"; field: string; value: string | boolean | number }
   | { type: "ADD_REWARD" }
   | { type: "REMOVE_REWARD"; id: string }
   | { type: "UPDATE_REWARD"; id: string; path: string; value: unknown }
@@ -1428,6 +1432,21 @@ function FooterSection({
             })
           }
         />
+        <s-number-field
+          label="Button Radius (px)"
+          name="footer-btnRadius"
+          value={String(config.footer.checkoutButtonRadius)}
+          min={0}
+          max={50}
+          step={1}
+          onInput={(e: Event) =>
+            dispatch({
+              type: "UPDATE_FOOTER",
+              field: "checkoutButtonRadius",
+              value: Number((e.target as HTMLInputElement).value),
+            })
+          }
+        />
         <s-switch
           label="Show Trust Badges"
           name="footer-trustBadges"
@@ -2046,7 +2065,7 @@ function CartDrawerPreview({ config }: { config: CartDrawerConfigJSON }) {
             backgroundColor: config.footer.checkoutButtonColor,
             color: config.footer.checkoutButtonTextColor,
             border: "none",
-            borderRadius: "8px",
+            borderRadius: `${config.footer.checkoutButtonRadius}px`,
             fontSize: "16px",
             fontWeight: 600,
             cursor: "pointer",
