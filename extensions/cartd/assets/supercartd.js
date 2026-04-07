@@ -583,7 +583,7 @@
 
       var offerText = "";
       if (upsell.offer.type === "percentage") offerText = upsell.offer.value + "% OFF";
-      else if (upsell.offer.type === "fixed") offerText = "$" + upsell.offer.value + " OFF";
+      else if (upsell.offer.type === "fixed") offerText = formatUpsellPrice(upsell.offer.value) + " OFF";
 
       var imgHtml = upsell.imageUrl
         ? '<img class="scd-upsell-img" src="' + escapeHtml(upsell.imageUrl) + '" alt="' + escapeHtml(upsell.title || "") + '" />'
@@ -717,13 +717,35 @@
     return div.innerHTML;
   }
 
+  function shopCurrencyCode() {
+    return (window.Shopify && Shopify.currency && Shopify.currency.active) || "USD";
+  }
+
+  var _moneyFormatter = null;
+  function moneyFormatter() {
+    if (_moneyFormatter) return _moneyFormatter;
+    try {
+      _moneyFormatter = new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: shopCurrencyCode(),
+      });
+    } catch (e) {
+      // Invalid currency code — fall back to USD
+      _moneyFormatter = new Intl.NumberFormat(undefined, {
+        style: "currency",
+        currency: "USD",
+      });
+    }
+    return _moneyFormatter;
+  }
+
   function formatMoney(cents) {
-    return "$" + (cents / 100).toFixed(2);
+    return moneyFormatter().format(cents / 100);
   }
 
   // Upsell prices come from config in major units (e.g. dollars)
   function formatUpsellPrice(value) {
-    return "$" + Number(value).toFixed(2);
+    return moneyFormatter().format(Number(value));
   }
 
   function getUpsellPrices(upsell, variantId) {

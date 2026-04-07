@@ -40,11 +40,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     });
   }
 
-  // Get shop GID for metafield publishing
+  // Get shop GID for metafield publishing + currency for price formatting
   const shopResponse = await admin.graphql(`
     query {
       shop {
         id
+        currencyCode
       }
     }
   `);
@@ -76,6 +77,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     config,
     published: record.published,
     shopGid: shopData.data?.shop?.id ?? "",
+    currencyCode: (shopData.data?.shop?.currencyCode as string) ?? "USD",
     billing: {
       plan: billing.plan,
       orderCount: billing.orderCount,
@@ -449,8 +451,15 @@ function getUpsellPrices(upsell: Upsell): {
   return { finalPrice, strikePrice };
 }
 
-function formatPrice(value: number): string {
-  return `$${value.toFixed(2)}`;
+function formatPrice(value: number, currencyCode: string = "USD"): string {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: currencyCode,
+    }).format(value);
+  } catch {
+    return `$${value.toFixed(2)}`;
+  }
 }
 
 function editorReducer(state: EditorState, action: EditorAction): EditorState {
@@ -1821,7 +1830,7 @@ export default function Editor() {
             background: "#fff",
           }}
         >
-          <CartDrawerPreview config={state.config} />
+          <CartDrawerPreview config={state.config} currencyCode={loaderData.currencyCode} />
         </div>
       </div>
     </s-page>
@@ -1829,17 +1838,23 @@ export default function Editor() {
 }
 
 // --- INLINE PREVIEW ---
-function CartDrawerPreview({ config }: { config: CartDrawerConfigJSON }) {
+function CartDrawerPreview({
+  config,
+  currencyCode,
+}: {
+  config: CartDrawerConfigJSON;
+  currencyCode: string;
+}) {
   const mockItems = [
     {
       title: "Example Product",
-      price: "$29.99",
+      price: formatPrice(29.99, currencyCode),
       quantity: 1,
       image: "https://cdn.shopify.com/s/files/1/0533/2089/files/placeholder-images-image_large.png",
     },
     {
       title: "Another Product",
-      price: "$49.99",
+      price: formatPrice(49.99, currencyCode),
       quantity: 2,
       image: "https://cdn.shopify.com/s/files/1/0533/2089/files/placeholder-images-image_large.png",
     },
@@ -2093,7 +2108,7 @@ function CartDrawerPreview({ config }: { config: CartDrawerConfigJSON }) {
                           color: upsell.design.textColor,
                         }}
                       >
-                        {formatPrice(prices.finalPrice)}
+                        {formatPrice(prices.finalPrice, currencyCode)}
                       </span>
                       {prices.strikePrice != null && (
                         <span
@@ -2103,7 +2118,7 @@ function CartDrawerPreview({ config }: { config: CartDrawerConfigJSON }) {
                             textDecoration: "line-through",
                           }}
                         >
-                          {formatPrice(prices.strikePrice)}
+                          {formatPrice(prices.strikePrice, currencyCode)}
                         </span>
                       )}
                     </div>
@@ -2113,7 +2128,7 @@ function CartDrawerPreview({ config }: { config: CartDrawerConfigJSON }) {
                   <div style={{ fontSize: "11px", color: "#888", marginTop: "2px" }}>
                     {upsell.offer.type === "percentage"
                       ? `${upsell.offer.value}% OFF`
-                      : `$${upsell.offer.value} OFF`}
+                      : `${formatPrice(upsell.offer.value, currencyCode)} OFF`}
                   </div>
                 )}
                 {(upsell.variants ?? []).length > 1 && (
@@ -2157,7 +2172,7 @@ function CartDrawerPreview({ config }: { config: CartDrawerConfigJSON }) {
           }}
         >
           <span>Subtotal</span>
-          <span>${totalPrice.toFixed(2)}</span>
+          <span>{formatPrice(totalPrice, currencyCode)}</span>
         </div>
         <button
           style={{
