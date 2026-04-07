@@ -600,10 +600,23 @@
         variantHtml += '</select>';
       }
 
+      var prices = getUpsellPrices(upsell, upsell.variantId);
+      var priceHtml = "";
+      if (prices) {
+        priceHtml =
+          '<div class="scd-upsell-price-row">' +
+            '<span class="scd-upsell-price" style="color:' + upsell.design.textColor + '">' + formatUpsellPrice(prices.finalPrice) + "</span>" +
+            (prices.strikePrice != null
+              ? '<span class="scd-upsell-strike">' + formatUpsellPrice(prices.strikePrice) + "</span>"
+              : "") +
+          "</div>";
+      }
+
       card.innerHTML =
         imgHtml +
         '<div class="scd-upsell-info">' +
           '<div class="scd-upsell-title" style="color:' + upsell.design.textColor + '">' + escapeHtml(upsell.title || "Recommended") + "</div>" +
+          priceHtml +
           (offerText ? '<div class="scd-upsell-offer">' + offerText + "</div>" : "") +
           variantHtml +
         "</div>" +
@@ -614,6 +627,33 @@
       card.addEventListener("click", function () {
         trackEvent("upsell_click", { productId: upsell.productId });
       });
+
+      var variantSelectEl = card.querySelector(".scd-upsell-variant");
+      if (variantSelectEl) {
+        variantSelectEl.addEventListener("change", function () {
+          var newPrices = getUpsellPrices(upsell, variantSelectEl.value);
+          var priceRow = card.querySelector(".scd-upsell-price-row");
+          if (!newPrices) {
+            if (priceRow) priceRow.remove();
+            return;
+          }
+          var html =
+            '<span class="scd-upsell-price" style="color:' + upsell.design.textColor + '">' + formatUpsellPrice(newPrices.finalPrice) + "</span>" +
+            (newPrices.strikePrice != null
+              ? '<span class="scd-upsell-strike">' + formatUpsellPrice(newPrices.strikePrice) + "</span>"
+              : "");
+          if (priceRow) {
+            priceRow.innerHTML = html;
+          } else {
+            var info = card.querySelector(".scd-upsell-info");
+            var titleEl = info.querySelector(".scd-upsell-title");
+            var newRow = document.createElement("div");
+            newRow.className = "scd-upsell-price-row";
+            newRow.innerHTML = html;
+            titleEl.insertAdjacentElement("afterend", newRow);
+          }
+        });
+      }
 
       card.querySelector(".scd-upsell-btn").addEventListener("click", function () {
         var selectedVariantId = upsell.variantId;
@@ -679,6 +719,37 @@
 
   function formatMoney(cents) {
     return "$" + (cents / 100).toFixed(2);
+  }
+
+  // Upsell prices come from config in major units (e.g. dollars)
+  function formatUpsellPrice(value) {
+    return "$" + Number(value).toFixed(2);
+  }
+
+  function getUpsellPrices(upsell, variantId) {
+    var variants = upsell.variants || [];
+    var variant = null;
+    for (var i = 0; i < variants.length; i++) {
+      if (variants[i].id === variantId) { variant = variants[i]; break; }
+    }
+    if (!variant || !variant.price) return null;
+
+    var base = Number(variant.price);
+    var finalPrice = base;
+    if (upsell.offer.type === "percentage") {
+      finalPrice = base * (1 - upsell.offer.value / 100);
+    } else if (upsell.offer.type === "fixed") {
+      finalPrice = Math.max(0, base - upsell.offer.value);
+    }
+
+    var strikePrice = null;
+    if (variant.compareAtPrice && variant.compareAtPrice > finalPrice) {
+      strikePrice = Number(variant.compareAtPrice);
+    } else if (finalPrice < base) {
+      strikePrice = base;
+    }
+
+    return { finalPrice: finalPrice, strikePrice: strikePrice };
   }
 
   // --- INIT ---

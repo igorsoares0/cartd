@@ -265,6 +265,24 @@
   margin-top: 2px;
 }
 
+.scd-upsell-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.scd-upsell-price {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.scd-upsell-strike {
+  font-size: 11px;
+  color: #888;
+  text-decoration: line-through;
+}
+
 .scd-upsell-variant {
   margin-top: 4px;
   width: 100%;

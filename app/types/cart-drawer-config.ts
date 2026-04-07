@@ -65,7 +65,14 @@ export type Upsell = {
   buttonText: string;
 
   /** Available variants for the product */
-  variants: { id: string; title: string }[];
+  variants: {
+    id: string;
+    title: string;
+    /** Price in major units (e.g. dollars). 0 when unknown (legacy) */
+    price: number;
+    /** Compare-at price in major units. null when not on sale or unknown */
+    compareAtPrice: number | null;
+  }[];
 
   /** Hide this upsell if any of these product IDs are in the cart */
   excludeIfProductIds: string[];

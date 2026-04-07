@@ -57,6 +57,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (config.footer && config.footer.checkoutButtonRadius === undefined) {
     config.footer.checkoutButtonRadius = 8;
   }
+  // Normalize: old upsell variants may not have price/compareAtPrice
+  if (config.body && Array.isArray(config.body.upsells)) {
+    for (const u of config.body.upsells) {
+      if (Array.isArray(u.variants)) {
+        u.variants = u.variants.map((v) => ({
+          id: v.id,
+          title: v.title,
+          price: typeof v.price === "number" ? v.price : 0,
+          compareAtPrice:
+            typeof v.compareAtPrice === "number" ? v.compareAtPrice : null,
+        }));
+      }
+    }
+  }
 
   return {
     config,
@@ -401,6 +415,42 @@ type EditorAction =
 
 function generateId() {
   return "c" + Math.random().toString(36).substring(2, 11);
+}
+
+/**
+ * Compute the display prices for an upsell, applying its offer to the
+ * currently selected variant. Returns null when price is unknown (legacy data).
+ */
+function getUpsellPrices(upsell: Upsell): {
+  finalPrice: number;
+  strikePrice: number | null;
+} | null {
+  const variant = (upsell.variants ?? []).find(
+    (v) => v.id === upsell.variantId,
+  );
+  if (!variant || !variant.price) return null;
+
+  const base = variant.price;
+  let finalPrice = base;
+  if (upsell.offer.type === "percentage") {
+    finalPrice = base * (1 - upsell.offer.value / 100);
+  } else if (upsell.offer.type === "fixed") {
+    finalPrice = Math.max(0, base - upsell.offer.value);
+  }
+
+  // Strike-through: prefer compareAtPrice if higher, else show base when discounted
+  let strikePrice: number | null = null;
+  if (variant.compareAtPrice && variant.compareAtPrice > finalPrice) {
+    strikePrice = variant.compareAtPrice;
+  } else if (finalPrice < base) {
+    strikePrice = base;
+  }
+
+  return { finalPrice, strikePrice };
+}
+
+function formatPrice(value: number): string {
+  return `$${value.toFixed(2)}`;
 }
 
 function editorReducer(state: EditorState, action: EditorAction): EditorState {
@@ -1022,12 +1072,28 @@ function UpsellsSection({
             path: "imageUrl",
             value: imgSrc,
           });
-          // Save all variants
+          // Save all variants (including price + compareAtPrice for display)
           const variants = (product.variants || []).map(
-            (v) => ({
-              id: v.id || "",
-              title: v.title || "Default",
-            }),
+            (v) => {
+              const raw = v as unknown as {
+                id?: string;
+                title?: string;
+                price?: string | number;
+                compareAtPrice?: string | number | null;
+              };
+              const price = raw.price != null ? Number(raw.price) : 0;
+              const cmp =
+                raw.compareAtPrice != null && raw.compareAtPrice !== ""
+                  ? Number(raw.compareAtPrice)
+                  : null;
+              return {
+                id: raw.id || "",
+                title: raw.title || "Default",
+                price: Number.isFinite(price) ? price : 0,
+                compareAtPrice:
+                  cmp != null && Number.isFinite(cmp) ? cmp : null,
+              };
+            },
           );
           dispatch({
             type: "UPDATE_UPSELL",
@@ -2008,6 +2074,41 @@ function CartDrawerPreview({ config }: { config: CartDrawerConfigJSON }) {
                 >
                   {upsell.title || "Upsell Product"}
                 </div>
+                {(() => {
+                  const prices = getUpsellPrices(upsell);
+                  if (!prices) return null;
+                  return (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "baseline",
+                        gap: "6px",
+                        marginTop: "2px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          color: upsell.design.textColor,
+                        }}
+                      >
+                        {formatPrice(prices.finalPrice)}
+                      </span>
+                      {prices.strikePrice != null && (
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            color: "#888",
+                            textDecoration: "line-through",
+                          }}
+                        >
+                          {formatPrice(prices.strikePrice)}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
                 {upsell.offer.type !== "none" && (
                   <div style={{ fontSize: "11px", color: "#888", marginTop: "2px" }}>
                     {upsell.offer.type === "percentage"
