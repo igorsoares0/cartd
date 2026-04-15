@@ -25,8 +25,13 @@ api_version = "2026-04"
   topics = [ "app_subscriptions/update" ]
   uri = "/webhooks/app_subscriptions/update"
 
+  [webhooks.privacy_compliance]
+  customer_data_request_url = "/webhooks/customers/data_request"
+  customer_deletion_url = "/webhooks/customers/redact"
+  shop_deletion_url = "/webhooks/shop/redact"
+
 [access_scopes]
-scopes = "write_products,read_products,write_discounts,read_orders"
+scopes = "read_products,write_discounts,read_orders"
 
 [app_proxy]
 url = "https://cartd.vercel.app/apps/supercartd"

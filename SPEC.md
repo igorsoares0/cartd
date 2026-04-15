@@ -636,8 +636,7 @@ extensions/supercartdrawer/
 
 **Required Shopify scopes:**
 ```
-write_products          # (existing) — for product picker in editor
-read_products           # product data for upsells
+read_products           # product data for upsells + ResourcePicker (App Bridge v4)
 write_discounts         # Shopify Functions discount creation
 read_orders             # order count for billing
 ```

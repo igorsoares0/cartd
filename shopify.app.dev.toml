@@ -26,7 +26,7 @@ api_version = "2026-04"
   uri = "/webhooks/app_subscriptions/update"
 
 [access_scopes]
-scopes = "write_products,read_products,write_discounts,read_orders"
+scopes = "read_products,write_discounts,read_orders"
 
 [app_proxy]
 url = "https://example.com/apps/supercartd"
